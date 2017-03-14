@@ -1,5 +1,6 @@
 native/target
 native/index.node
+native/Cargo.lock
 **/*~
 **/node_modules
 **/.DS_Store
