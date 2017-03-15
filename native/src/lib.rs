@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::vec::Vec;
 use std::sync::Mutex;
 use std::ops::DerefMut;
+use std::fs;
 
 use unix_socket::{UnixStream, UnixListener};
 
@@ -46,6 +47,7 @@ lazy_static! {
 }
 
 fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
+    let _ = fs::remove_file("echo.sock");
     let listener = UnixListener::bind("echo.sock").unwrap();
 
     thread::spawn(move || {
@@ -209,7 +211,7 @@ fn handle_client_outer(stream: UnixStream) {
     let _result = panic::catch_unwind(|| {
         handle_client(reader, connection_id);
     });
-
+    
     {
         // clean up message slot
         MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);
