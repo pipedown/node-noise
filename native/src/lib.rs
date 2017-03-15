@@ -155,7 +155,6 @@ fn js_get_response(mut call: Call) -> JsResult<JsValue> {
         Some(ref mut res) => res.take(),
         None => return JsError::throw(Kind::Error, "missing response"),
     };
-    println!("about to unwrap!");
     match res.unwrap() {
         Message::ResponseOk(json) => {
             Ok(convert_json(&mut call, json))
@@ -199,7 +198,6 @@ fn handle_client_outer(stream: UnixStream) {
     let connection_id = match reader.read_until(b';',&mut buf) {
         Ok(_size) => {
             buf.pop(); // remove trailing ';'
-            println!("buf: {}", str::from_utf8(&buf).unwrap());
             str::from_utf8(&buf).unwrap().parse::<u64>().unwrap()
         },
         Err(msg) => {
@@ -232,7 +230,6 @@ fn handle_client(mut reader: BufReader<UnixStream>, connection_id: u64) {
                     MESSAGE_MAP.lock().unwrap().deref_mut()
                         .get_mut(&connection_id).unwrap().take().unwrap()
                 };
-                println!("Got a message");
 
                 if let Message::Close = msg {
                     index = Index::new(); // this closes the existing instance
@@ -277,7 +274,6 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
                 match index.add(&doc_str) {
                     Ok(id) => results.push(JsonValue::String(id)),
                     Err(reason) => {
-                        println!("error in add");
                         let err_str = JsonValue::String(reason.description().to_string());
                         let err_obj = vec![("error".to_string(), err_str)];
                         results.push(JsonValue::Object(err_obj))
@@ -287,7 +283,6 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
             match index.flush() {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
                 Err(reason) => {
-                    println!("error in flush");
                     Message::ResponseError(reason.description().to_string())
                 },
             }
@@ -299,7 +294,6 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
                     Ok(true) => results.push(JsonValue::True),
                     Ok(false) => results.push(JsonValue::False),
                     Err(reason) => {
-                        println!("error in delete");
                         let err_str = JsonValue::String(reason.description().to_string());
                         let err_obj = vec![("error".to_string(), err_str)];
                         results.push(JsonValue::Object(err_obj))
@@ -309,7 +303,6 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
             match index.flush() {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
                 Err(reason) => {
-                    println!("error in flush");
                     Message::ResponseError(reason.description().to_string())
                 },
             }
@@ -361,7 +354,6 @@ fn drop_index(name: &str) -> Message {
     match Index::drop(name) {
         Ok(()) => Message::ResponseOk(JsonValue::True),
         Err(msg) => {
-            println!("Drop error!!");
             Message::ResponseError(msg.description().to_string())
         },
     }
