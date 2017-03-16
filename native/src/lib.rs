@@ -10,7 +10,6 @@ use std::str;
 use std::panic;
 use std::thread;
 use std::io::{BufReader, BufRead, Write};
-use std::path::{Component, Path};
 use std::error::Error;
 use std::collections::HashMap;
 use std::vec::Vec;
@@ -41,9 +40,16 @@ enum Message {
     ResponseError(String),
 }
 
+// this is a global that provides a messaging slot from node clients to send messages
+// to the server threads.
 lazy_static! {
     static ref MESSAGE_MAP: Mutex<HashMap<u64, Option<Message>>> =
         Mutex::new(HashMap::new());
+}
+
+// This lock only allows one index to be updated at a time.
+lazy_static! {
+    static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
 }
 
 fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
@@ -265,12 +271,22 @@ fn handle_client(mut reader: BufReader<UnixStream>, connection_id: u64) {
 fn process_message(mut index: &mut Index, message: Message) -> Message {
     match message {
         Message::OpenIndex(name, options) => {
-            open_index(&mut index, &name, options)
+            match index.open(&name, options) {
+                Ok(()) => Message::ResponseOk(JsonValue::True),
+                Err(msg) => Message::ResponseError(msg.description().to_string()),
+            }
         },
         Message::DropIndex(name) => {
-            drop_index(&name)
+            match Index::drop(&name) {
+                Ok(()) => Message::ResponseOk(JsonValue::True),
+                Err(msg) => Message::ResponseError(msg.description().to_string()),
+            }
         },
         Message::Add(vec) => {
+            let _guard = match WRITE_LOCK.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
             let mut results = Vec::with_capacity(vec.len());
             for doc_str in vec {
                 match index.add(&doc_str) {
@@ -290,6 +306,10 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
             }
         },
         Message::Delete(vec) => {
+            let _guard = match WRITE_LOCK.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
             let mut results = Vec::with_capacity(vec.len());
             for doc_str in vec {
                 match index.delete(&doc_str) {
@@ -324,40 +344,6 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
         Message::ResponseError(_string) => {
             panic!("Got ResponseError on wrong side!");
         }
-    }
-}
-
-fn open_index(index: &mut Index, name: &str, options: Option<OpenOptions>) -> Message {
-    for comp in Path::new(name).components() {
-        if comp == Component::RootDir {
-            return Message::ResponseError("Name cannot start with \"/\"".to_string());
-        } else if comp == Component::ParentDir {
-            return Message::ResponseError("Name cannot contain \"../\"".to_string());
-        } else if comp == Component::CurDir {
-            return Message::ResponseError("Name cannot contain \"./\"".to_string());
-        }
-    }
-    match index.open(name, options) {
-        Ok(()) => Message::ResponseOk(JsonValue::True),
-        Err(msg) => Message::ResponseError(msg.description().to_string()),
-    }
-}
-
-fn drop_index(name: &str) -> Message {
-    for comp in Path::new(name).components() {
-        if comp == Component::RootDir {
-            return Message::ResponseError("Name cannot start with \"/\"".to_string());
-        } else if comp == Component::ParentDir {
-            return Message::ResponseError("Name cannot contain \"../\"".to_string());
-        } else if comp == Component::CurDir {
-            return Message::ResponseError("Name cannot contain \"./\"".to_string());
-        }
-    }
-    match Index::drop(name) {
-        Ok(()) => Message::ResponseOk(JsonValue::True),
-        Err(msg) => {
-            Message::ResponseError(msg.description().to_string())
-        },
     }
 }
 
