@@ -10,7 +10,9 @@
     "node-ipc": "^8.10.3",
     "unix-stream": "^1.0.2"
   },
+  "devDependencies": { "test": "0.6.0" },
   "scripts": {
-    "install": "neon build"
+    "install": "neon build",
+    "test": "node test/index.js"
   }
 }
