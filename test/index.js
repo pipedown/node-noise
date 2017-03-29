@@ -4,17 +4,17 @@ var noise = require('../lib/noise.js');
 // in async mode and test will be complete only after callback is called 
 exports['test basic'] = function(assert, done) {
     var index;
-    noise.open("firstrealtest", true).then((retIndex) => {
+    noise.open("firstrealtest", true).then(retIndex => {
         assert.ok(retIndex, "index opened/created");
         index = retIndex;
         return index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]);
-    }).then((resp) => {
+    }).then(resp => {
         assert.deepEqual(resp, ["a","b"], "docs created");
         return index.query('find {foo: =="bar"}')
-    }).then((resp) => {
+    }).then(resp => {
         assert.deepEqual(resp, ["a"], "doc a found");
         return index.delete(resp);
-    }).then((resp) => {
+    }).then(resp => {
         assert.deepEqual(resp, [true], "doc a deleted");
         return index.close();
     }).then(() => {
@@ -22,8 +22,7 @@ exports['test basic'] = function(assert, done) {
         return noise.drop("firstrealtest");
     }).then(() => {
         assert.ok(true, "index dropped");
-        done();
-    }).catch((error) => {
+    }).catch(error => {
         if (index) {
             index.close();
         }
