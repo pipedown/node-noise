@@ -12,52 +12,9 @@ Currently only OS X and Linux are supported. Help wanted for porting to other pl
 You'll need to install the [Rust Compiler](https://www.rust-lang.org/en-US/install.html) before installing the NPM package. 
 
 
-# Simple Example
-
-```javascript
-
-var noise = require('noise-search'),
-	co = require('co'),
-	assert = require('assert');
-
-co(function*() {
-    // open an index. `true` means if it doesn't exist, create one.
-    var index = yield noise.open("first_index", true);
-    
-    assert.ok(index, "index opened/created");
-
-    // add multiple documents
-    var r = yield index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]);
-    
-    assert.equal(2, r.length, "added 2 documents");
-
-    // find one of the documents
-    var r = yield index.query('find {foo: =="bar"}');    
-    
-    assert.deepEqual(r, ["a"], "doc \"a\" found");
-    
-    // delete that document
-    var r = yield index.delete(r);
-    
-    assert.deepEqual(r, [true], "doc \"a\" deleted");
-
-    // Close connection
-    yield index.close();
-    
-    assert.ok(true, "index closed");
-
-    // `drop` the index, completely removing all data from disk.
-    yield noise.drop("first_index");
-    
-    assert.ok(true, "index dropped");
-
-}).catch(function(err) {
-    console.log(err.stack);
-});
-```
 # Javascript API
 
-The API for noise is promise based. Each method returns a promise.
+The API for Noise is Promise based. Each method returns a Promise which will then notify asynchronously the success or failure of the method call.
 
 ##Opening an Index
 
@@ -66,7 +23,8 @@ To open an existing index, use the open method on the `noise` object.
 To create a new index, pass in a second argument of `true` which means "create if missing".
 
 ```javascript
-var noise = require('noise-search');
+var noise = require('noise-search'),
+    assert = require('assert');
 
 let index;
 noise.open("myindex", true).then(retIndex => {
@@ -77,7 +35,7 @@ noise.open("myindex", true).then(retIndex => {
 
 ```
 
-##Adding Documents:
+##Adding Documents
 
 After the index is opened you use `add` method on the index to add documents.
 
@@ -86,17 +44,9 @@ You can add a single document, or batch documents into an array. Batching many d
 The successful return result is an array of the ids of the array corresponding to the array supplied. If a document can't be inserted for some reason (for example you set `_id` field to a non-string) it has an `{"error": "<reason>}` in its array slot. some
 
 ```javascript
-var noise = require('noise-search'),
-    assert = require('assert');
-    
-var index;
-noise.open("myindex", true).then(retIndex => {
-    index = retIndex;
-    
-    // add documents -- batch is faster
-    return index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]);
-    
-}).then(resp => {
+
+// add documents -- batch is faster
+index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
 	assert.equal(2, resp.length, "added 2 documents");
 	
 	// add a document -- single is slower
@@ -110,10 +60,101 @@ noise.open("myindex", true).then(retIndex => {
 });
 ```
 
+If you add a document with the same _id as a previously added document, the document is then replaced with the new document.
+
+## Querying
+
+To perform a query, use the `.query(...)` on the index object.
+
+```javascript
+index.query('find {foo: =="bar"}').then(resp => {
+    assert.deepEqual(resp, ["a"], "doc a found");
+}
+```
+
+##Deleting Documents
+
+You can delete documents by passing in the _id of the documents to the `.delete(...)` method.
+
+```javascript
+index.delete(["a", "b"]).then(resp => {
+    assert.deepEqual(resp, [true, true], "doc a and b deleted");
+}.catch(error => {
+    console.log("error: " + error);
+});
+```
+
+##Closing an index
+
+To close an index, use the `.close()` method.
+
+```javascript
+index.close().then(() => {
+    assert.ok(true, "index closed");
+}.catch(error => {
+    console.log("error: " + error);
+});
+```
+
+##Drop: Deleting an Entire Index
+
+To delete a whole index (all index files deleted from disk irreversibly) use the drop method on the `noise` object.
+
+For this to work **ALL INSTANCES OF THE INDEX MUST BE CLOSED FIRST**.
+
+```javascript
+noise.drop("myindex").then(() => {
+    assert.ok(true, "index dropped");
+}.catch(error => {
+    console.log("error: " + error);
+});
+```
+
+##A Complete Example
+
+```javascript
+var noise = require('noise-search'),
+    assert = require('assert');
+    
+var index;
+noise.open("myindex", true).then(retIndex => {
+    assert.ok(retIndex, "index opened/created");
+    index = retIndex;
+    return index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]);
+}).then(resp => {
+    assert.deepEqual(resp, ["a","b"], "docs created");
+    return index.query('find {foo: =="bar"}')
+}).then(resp => {
+    assert.deepEqual(resp, ["a"], "doc a found");
+    return index.delete(resp);
+}).then(resp => {
+    assert.deepEqual(resp, [true], "doc a deleted");
+    return index.close();
+}).then(() => {
+    assert.ok(true, "index closed");
+    return noise.drop("myindex");
+}).then(() => {
+    assert.ok(true, "index dropped");
+}).catch(error => {
+    if (index) {
+        index.close();
+    }
+    console.log("error: " + error);
+});
+```
+
+## Concurrency and Multiple Instances
+
+Each instance of an index opened can only respond to one request at a time. To improve concurrency, open multiple instances of the same index. Each will run in its own background thread and service the request, utilizing more cores and preventing long running queries from blocking others.
+
+Adding documents to multiple instances at the same time is safe.
+
+Be careful about opening too many instances. The cost of context switching for many threads start to dominate CPU and slow down all instances.
+
 
 # Documents
 
-The JSON inserted into the index must be an object (`{...}`) type. There is no set limit on the size, structure or types of the documents other than being valid JSON and respecting the `_id` field.
+The JSON inserted into the index must be an object type (`{}`). There is no set limit on the size, structure or types of the documents other than being valid JSON and respecting the `_id` field.
 
 ##_id Field
 
@@ -171,7 +212,19 @@ find {body: ~50= "bitcoin gold price"}
 
 ### Comparison Operators
 
-NOT YET FINISHED
+Noise supports the following comparison operators:
+
+|Operator|Description|
+---------|-----------
+|`==`|Equality|
+|`>`|Less Than|
+|`<`|Greater Than|
+|`>=`|Less Than or Equal|
+|`<=`|Greater Than or Equal|
+
+Noise does not do type conversions of datatypes. Strings only compare with strings, number only compare with numbers.
+
+`null` `true` and `false` only work with `==`.
 
 ### Finding Things in Arrays
 
@@ -429,9 +482,9 @@ find {foo: == "bar"}
 return .baz[*].biz
 ```
 
-### Bind Variables: Return Matched Array Elements
+### Bind Variables: Return Only Matched Array Elements
 
-If you are searching for nested values or object nested in arrays, and you want to return the match objects, use the bind syntax before the array in the query.
+If you are searching for nested values or objects nested in arrays, and you want to return only the match objects, use the bind syntax before the array in the query.
 
 Say you have a document like this:
 
@@ -517,7 +570,7 @@ The ordering of types for `max(...)` and `min(...)` is as follows:
 null < false < true < number < string < array < object
 
 
-### Group/Aggregate Examples:
+## Group/Aggregate Examples:
 
 
 Let's say we have documents like this:
@@ -555,7 +608,7 @@ Let's say we have documents like this:
 {"foo":"group3", "baz": "a", "bar": "f"}
 ```
 
-####Count
+###Count
 
 Query:
 ```
@@ -571,7 +624,7 @@ Results:
 
 ```
 
-####Sum
+###Sum
 
 Query:
 
@@ -589,7 +642,7 @@ Results:
 
 ```
 
-####Avg
+###Avg
 
 Query:
 
@@ -604,7 +657,7 @@ Results:
 {"bar":2}
 ```
 
-####Concat
+###Concat
 
 Query:
 
@@ -621,7 +674,7 @@ Results:
 {"baz":"c","concat":"c|c|c|c"}
 ```
 
-####Max
+###Max
 
 Query:
 
@@ -648,7 +701,7 @@ Results:
 {"max":"c"}
 ```
 
-####Min
+###Min
 
 Query:
 
@@ -663,7 +716,7 @@ Results:
 {"min":1}
 ```
 
-####Group Ordering
+###Group Ordering
 
 Query:
 
@@ -685,7 +738,7 @@ Results:
 ["b","a",1]
 ```
 
-####Default Values
+###Default Values
 
 Query:
 
@@ -707,7 +760,9 @@ Results:
 ["b","a",1]
 ```
 
-####Arrays
+###Arrays
+
+When performing aggregations on arrays, some functions will extract values out of the arrays (and arrays nested in arrays).
 
 We have documents like this:
 
