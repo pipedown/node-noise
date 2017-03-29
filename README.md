@@ -16,7 +16,7 @@ You'll need to install the [Rust Compiler](https://www.rust-lang.org/en-US/insta
 
 The API for Noise is Promise based. Each method returns a Promise which will then notify asynchronously the success or failure of the method call.
 
-##Opening an Index
+## Opening an Index
 
 To open an existing index, use the open method on the `noise` object.
 
@@ -35,7 +35,7 @@ noise.open("myindex", true).then(retIndex => {
 
 ```
 
-##Adding Documents
+## Adding Documents
 
 After the index is opened you use `add` method on the index to add documents.
 
@@ -72,7 +72,7 @@ index.query('find {foo: =="bar"}').then(resp => {
 }
 ```
 
-##Deleting Documents
+## Deleting Documents
 
 You can delete documents by passing in the _id of the documents to the `.delete(...)` method.
 
@@ -84,7 +84,7 @@ index.delete(["a", "b"]).then(resp => {
 });
 ```
 
-##Closing an index
+## Closing an index
 
 To close an index, use the `.close()` method.
 
@@ -96,7 +96,7 @@ index.close().then(() => {
 });
 ```
 
-##Drop: Deleting an Entire Index
+## Drop: Deleting an Entire Index
 
 To delete a whole index (all index files deleted from disk irreversibly) use the drop method on the `noise` object.
 
@@ -110,7 +110,7 @@ noise.drop("myindex").then(() => {
 });
 ```
 
-##A Complete Example
+## A Complete Example
 
 ```javascript
 var noise = require('noise-search'),
@@ -156,7 +156,7 @@ Be careful about opening too many instances. The cost of context switching for m
 
 The JSON inserted into the index must be an object type (`{}`). There is no set limit on the size, structure or types of the documents other than being valid JSON and respecting the `_id` field.
 
-##_id Field
+## _id Field
 
 Documents inserted into the index can include a special `_id` field at the root of the document to identify the document. You can use this field to overwrite and delete previously inserted document. The `_id` field MUST be a text value.
 
@@ -520,7 +520,7 @@ find {foo: x::[{fiz: == "bar"}] || faz: x::[{fiz: == "bar"}]}
 return [x.val]
 ```
 
-##Limit Clause
+## Limit Clause
 
 To limit the number of results, use a limit clause at the end of the query.
 
@@ -570,7 +570,7 @@ The ordering of types for `max(...)` and `min(...)` is as follows:
 null < false < true < number < string < array < object
 
 
-## Group/Aggregate Examples:
+## Group/Aggregate Examples
 
 
 Let's say we have documents like this:
@@ -608,7 +608,7 @@ Let's say we have documents like this:
 {"foo":"group3", "baz": "a", "bar": "f"}
 ```
 
-###Count
+### Count
 
 Query:
 ```
@@ -624,7 +624,7 @@ Results:
 
 ```
 
-###Sum
+### Sum
 
 Query:
 
@@ -642,7 +642,7 @@ Results:
 
 ```
 
-###Avg
+### Avg
 
 Query:
 
@@ -657,7 +657,7 @@ Results:
 {"bar":2}
 ```
 
-###Concat
+### Concat
 
 Query:
 
@@ -674,7 +674,7 @@ Results:
 {"baz":"c","concat":"c|c|c|c"}
 ```
 
-###Max
+### Max
 
 Query:
 
@@ -701,7 +701,7 @@ Results:
 {"max":"c"}
 ```
 
-###Min
+### Min
 
 Query:
 
@@ -716,7 +716,7 @@ Results:
 {"min":1}
 ```
 
-###Group Ordering
+### Group Ordering
 
 Query:
 
@@ -738,7 +738,7 @@ Results:
 ["b","a",1]
 ```
 
-###Default Values
+### Default Values
 
 Query:
 
@@ -760,7 +760,7 @@ Results:
 ["b","a",1]
 ```
 
-###Arrays
+### Arrays
 
 When performing aggregations on arrays, some functions will extract values out of the arrays (and arrays nested in arrays).
 
@@ -776,7 +776,7 @@ We have documents like this:
 Query:
 
 ```
-ind {foo: =="array1"}
+find {foo: =="array1"}
 return array(.baz)
 ```
 
