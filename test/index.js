@@ -3,12 +3,8 @@ var noise = require('../lib/noise.js');
 // if test function expects second named argument it will be executed 
 // in async mode and test will be complete only after callback is called 
 exports['test basic'] = function(assert, done) {
-    var index;
-    noise.open("firstrealtest", true).then(retIndex => {
-        assert.ok(retIndex, "index opened/created");
-        index = retIndex;
-        return index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]);
-    }).then(resp => {
+    var index = noise.open("firstrealtest", true);
+    index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         assert.deepEqual(resp, ["a","b"], "docs created");
         return index.query('find {foo: =="bar"}')
     }).then(resp => {
@@ -22,6 +18,7 @@ exports['test basic'] = function(assert, done) {
         return noise.drop("firstrealtest");
     }).then(() => {
         assert.ok(true, "index dropped");
+        done();
     }).catch(error => {
         if (index) {
             index.close();
@@ -29,37 +26,68 @@ exports['test basic'] = function(assert, done) {
         console.log("error: " + error);
     });
 }
- 
-var co = require('co');
 
-exports['test yield'] = function(assert, done) {
-    co(function*() {
-        // open an index. `true` means if it doesn't exist, create one.
-        var index = yield noise.open("first_index", true);
-        assert.ok(index, "index opened/created");
+exports['test badopen'] = function(assert, done) {
+    var index = noise.open("", true);
+    index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
+        console.log(resp);
+        assert.ok(false, "this should have failed");
+    }).catch(error => {
+        assert.ok(true, "failed" + error);
+        done();
+    });
+}
 
-        // Insert multiple documents
-        var r = yield index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]);
-        assert.equal(2, r.length, "added 2 documents");
+exports['test multi concurrent add'] = function(assert, done) {
+    var index = noise.open("multiadd", true);
+    index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
+        assert.deepEqual(resp, ["a", "b"], "added a and b");
+    }).catch(error => {
+        assert.ok(false, "failed" + error);
+    });
+    index.add([{_id:"c",foo:"bar"}, {_id:"d", foo:"baz"}]).then(resp => {
+        assert.deepEqual(resp, ["c", "d"], "added c and d");
+        return index.close();
+    }).then(() => {
+        return noise.drop("multiadd");
+    }).then(() => {
+        // make sure deleted
+        var index = noise.open("multiadd", false);
+        index.add({foo:"bar"}).then(() => {
+            assert.ok(false, "add should have failed");
+        }).catch(err => {
+            assert.ok(true, "dropped index didn't reopen");
+            done();
+        });
+    }).catch(error => {
+        assert.ok(false, "failed" + error);
+    });
+};
 
-        // find one of the documents
-        var r = yield index.query('find {foo: =="bar"}');    
-        assert.deepEqual(r, ["a"], "doc \"a\" found");
-        
-        // delete that document
-        var r = yield index.delete(r);
-        assert.deepEqual(r, [true], "doc \"a\" deleted");
-
-        // Close connection
-        yield index.close();
-        assert.ok(true, "index closed");
-
-        // `drop` the index, completely removing all data from disk.
-        yield noise.drop("first_index");
-        assert.ok(true, "index dropped");
-
-    }).catch(function(err) {
-        console.log(err.stack);
+exports['test multi instances opened'] = function(assert, done) {
+    var index1 = noise.open("multiinst", true);
+    var index2;
+    index1.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
+        assert.deepEqual(resp, ["a", "b"], "added a and b");
+        index2 = noise.open("multiinst", false);
+        return index2.query('find {foo: == "bar"}');
+    }).then(resp => {
+        assert.deepEqual(resp, ["a"]);
+        return index1.close();
+    }).then(() => {
+        return index2.close();
+    }).then(() => {
+        return noise.drop("multiinst");
+    }).then(() => {
+        var index = noise.open("multiinst", false);
+        index.add({foo:'bar'}).then(resp => {
+            assert.ok(false, "shouldn't happen");
+        }).catch(err => {
+            assert.ok(true, "dropped index didn't reopen");
+            done();
+        });
+    }).catch(error => {
+        assert.ok(false, "failed " + error);
     });
 };
 

@@ -13,9 +13,9 @@ use std::io::{BufReader, BufRead, Write};
 use std::error::Error;
 use std::collections::HashMap;
 use std::vec::Vec;
-use std::sync::Mutex;
 use std::ops::DerefMut;
 use std::fs;
+use std::sync::{Arc, RwLock, Mutex};
 
 use unix_socket::{UnixStream, UnixListener};
 
@@ -25,7 +25,7 @@ use neon::js::{JsString, JsNumber, JsBoolean, JsNull, JsArray, JsObject,
 use neon::js::error::{JsError, Kind};
 use neon::mem::Handle;
 
-use noise_search::index::{Index, OpenOptions};
+use noise_search::index::{Index, OpenOptions, Batch};
 use noise_search::query::{Query};
 use noise_search::json_value::JsonValue;
 
@@ -47,9 +47,14 @@ lazy_static! {
         Mutex::new(HashMap::new());
 }
 
+struct OpenedIndex {
+    index: Index,
+    open_count: usize,
+}
+
 // This lock only allows one index to be updated at a time.
 lazy_static! {
-    static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
+    static ref OPEN_INSTANCES: Mutex<HashMap<String, Arc<RwLock<OpenedIndex>>>> = Mutex::new(HashMap::new());
 }
 
 fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
@@ -213,20 +218,123 @@ fn handle_client_outer(stream: UnixStream) {
             return;
         },
     };
-
-    let _result = panic::catch_unwind(|| {
-        handle_client(reader, connection_id);
-    });
     
-    {
-        // clean up message slot
-        MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);
+    match reader.read_until(b'0', &mut buf) {
+        Ok(0) => return,
+        Ok(1) => {
+            // first get the message
+            let msg = {
+                MESSAGE_MAP.lock().unwrap().deref_mut()
+                    .get_mut(&connection_id).unwrap().take().unwrap()
+            };
+            match msg {
+                Message::OpenIndex(name, options) => {
+                    let mut index = Arc::new(RwLock::new(OpenedIndex{index: Index::new(), open_count: 1}));
+                    let resp = {
+                        let mut guard = OPEN_INSTANCES.lock().unwrap();
+                        let mut map = guard.deref_mut();
+                        let needs_opening = match map.get_mut(&name) {
+                            None => true,
+                            Some(opened_index) => {
+                                index = opened_index.clone();
+                                opened_index.write().unwrap().open_count += 1;
+                                false
+                            },
+                        };
+                        if needs_opening {
+                            match index.write().unwrap().index.open(&name, options) {
+                                Ok(()) => {
+                                    map.insert(name.clone(), index.clone());
+                                    Message::ResponseOk(JsonValue::True)
+                                },
+                                Err(msg) => Message::ResponseError(msg.description().to_string()),
+                            }
+                        } else {
+                            Message::ResponseOk(JsonValue::True)
+                        }
+                    };
+                    // put the response in the queue
+                    {
+                        *MESSAGE_MAP.lock().unwrap().deref_mut()
+                            .get_mut(&connection_id).unwrap() = Some(resp);
+                    }
+
+                    {
+                        // notify the client the response is ready
+                        let mut writer = reader.get_mut();
+                        writer.write_all(&[b'1']).unwrap();
+                        writer.flush().unwrap();
+                    }
+                    let name_copy = name.clone();
+                    // now start servicing instance requests
+                    let result = panic::catch_unwind(|| {
+                        handle_client(name_copy, index, reader, connection_id);
+                    });
+                    if result.is_err() {
+                        // handle_client paniced, cleanup instance
+                        let mut guard = OPEN_INSTANCES.lock().unwrap();
+                        let mut map = guard.deref_mut();
+                        let remove_from_map = match map.get_mut(&name) {
+                            Some(opened_index) => {
+                                if opened_index.read().unwrap().open_count == 1 {
+                                    true
+                                } else {
+                                    opened_index.write().unwrap().open_count -= 1;
+                                    false
+                                }
+                            },
+                            None => false,
+                        };
+                        if remove_from_map {
+                            map.remove(&name);
+                        }
+                    }
+                    {
+                        // clean up message slot
+                        MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);
+                    }
+                },
+                Message::DropIndex(name) => {
+                    let mut guard = OPEN_INSTANCES.lock().unwrap();
+                    let map = guard.deref_mut();
+                    let resp = if map.contains_key(&name) {
+                        Message::ResponseError("Index instances still open".to_string())
+                    } else {
+                        match Index::drop(&name) {
+                            Ok(()) => Message::ResponseOk(JsonValue::True),
+                            Err(msg) => Message::ResponseError(msg.description().to_string()),
+                        }
+                    };
+                    {
+                        // put the response in the queue
+                        *MESSAGE_MAP.lock().unwrap().deref_mut()
+                            .get_mut(&connection_id).unwrap() = Some(resp);
+                    }
+                    {
+                        // notify the client the response is ready
+                        let mut writer = reader.get_mut();
+                        writer.write_all(&[b'1']).unwrap();
+                        writer.flush().unwrap();
+                    }
+
+                    // when the socket closes we'll know we can cleanup the message slot.
+                    let _ = reader.read_until(b'0', &mut buf);
+                    {
+                        // clean up message slot
+                        MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);
+                    }
+
+                },
+                _ => panic!("unexpected message"),
+            }
+        },
+        Ok(_size) => panic!("WTF, more than one byte read!"),
+        Err(msg) => println!("Error reading socket: {}", msg),
     }
 }
 
-fn handle_client(mut reader: BufReader<UnixStream>, connection_id: u64) {
+fn handle_client(name: String, mut index: Arc<RwLock<OpenedIndex>>, mut reader: BufReader<UnixStream>, connection_id: u64) {
     let mut buf = Vec::new();
-    let mut index = Index::new();
     loop {
         // from now on the stream only sends a single byte on value 0
         // to indicate there is a message waiting,
@@ -240,12 +348,23 @@ fn handle_client(mut reader: BufReader<UnixStream>, connection_id: u64) {
                 };
 
                 if let Message::Close = msg {
-                    index = Index::new(); // this closes the existing instance
-                    
-                    // appease compiler: "value assigned to `index` is never read,"
-                    assert!(!index.is_open()); 
-
-                    break; // now we end the loop. The client will notice the socket close.
+                    let mut guard = OPEN_INSTANCES.lock().unwrap();
+                    let mut map = guard.deref_mut();
+                    let remove_from_map = match map.get_mut(&name) {
+                        Some(open_index) => {
+                            if open_index.read().unwrap().open_count == 1 {
+                                true
+                            } else {
+                                open_index.write().unwrap().open_count -= 1;
+                                false
+                            }
+                        },
+                        None => false,
+                    };
+                    if remove_from_map {
+                        map.remove(&name);
+                    }
+                    return; // now we end the loop. The client will notice the socket close.
                 }
                 // process the message
                 let response = process_message(&mut index, msg);
@@ -268,28 +387,14 @@ fn handle_client(mut reader: BufReader<UnixStream>, connection_id: u64) {
     }
 }
 
-fn process_message(mut index: &mut Index, message: Message) -> Message {
+fn process_message(index: &mut Arc<RwLock<OpenedIndex>>, message: Message) -> Message {
     match message {
-        Message::OpenIndex(name, options) => {
-            match index.open(&name, options) {
-                Ok(()) => Message::ResponseOk(JsonValue::True),
-                Err(msg) => Message::ResponseError(msg.description().to_string()),
-            }
-        },
-        Message::DropIndex(name) => {
-            match Index::drop(&name) {
-                Ok(()) => Message::ResponseOk(JsonValue::True),
-                Err(msg) => Message::ResponseError(msg.description().to_string()),
-            }
-        },
         Message::Add(vec) => {
-            let _guard = match WRITE_LOCK.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
             let mut results = Vec::with_capacity(vec.len());
+            let mut batch = Batch::new();
+            let ref mut index = index.write().unwrap().index;
             for doc_str in vec {
-                match index.add(&doc_str) {
+                match index.add(&doc_str, &mut batch) {
                     Ok(id) => results.push(JsonValue::String(id)),
                     Err(reason) => {
                         let err_str = JsonValue::String(reason.description().to_string());
@@ -298,7 +403,7 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
                     },
                 }
             }
-            match index.flush() {
+            match index.flush(batch) {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
                 Err(reason) => {
                     Message::ResponseError(reason.description().to_string())
@@ -306,13 +411,11 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
             }
         },
         Message::Delete(vec) => {
-            let _guard = match WRITE_LOCK.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
+            let ref mut index = index.write().unwrap().index;
+            let mut batch = Batch::new();
             let mut results = Vec::with_capacity(vec.len());
             for doc_str in vec {
-                match index.delete(&doc_str) {
+                match index.delete(&doc_str, &mut batch) {
                     Ok(true) => results.push(JsonValue::True),
                     Ok(false) => results.push(JsonValue::False),
                     Err(reason) => {
@@ -322,7 +425,7 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
                     },
                 }
             }
-            match index.flush() {
+            match index.flush(batch) {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
                 Err(reason) => {
                     Message::ResponseError(reason.description().to_string())
@@ -330,10 +433,12 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
             }
         },
         Message::Query(query) => {
-            match Query::get_matches(&query, &index) {
+            let ref index = index.read().unwrap().index;
+            let msg = match Query::get_matches(&query, index) {
                 Ok(results) => Message::ResponseOk(JsonValue::Array(results.collect())),
                 Err(reason) => Message::ResponseError(reason.description().to_string()),
-            }
+            };
+            msg
         },
         Message::Close => {
             panic!("Can't get close message here!");
@@ -343,6 +448,12 @@ fn process_message(mut index: &mut Index, message: Message) -> Message {
         },
         Message::ResponseError(_string) => {
             panic!("Got ResponseError on wrong side!");
+        },
+        Message::OpenIndex(_,_) => {
+            panic!("Can't get OpenIndex message here!");
+        },
+        Message::DropIndex(_) => {
+            panic!("Can't get DropIndex message here!");
         }
     }
 }
