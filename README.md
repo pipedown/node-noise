@@ -26,12 +26,7 @@ To create a new index, pass in a second argument of `true` which means "create i
 var noise = require('noise-search'),
     assert = require('assert');
 
-let index;
-noise.open("myindex", true).then(retIndex => {
-    index = retIndex;
-}).catch(error => {
-    console.log("error: " + error);
-});
+let index = noise.open("myindex", true);
 
 ```
 
@@ -116,12 +111,8 @@ noise.drop("myindex").then(() => {
 var noise = require('noise-search'),
     assert = require('assert');
     
-var index;
-noise.open("myindex", true).then(retIndex => {
-    assert.ok(retIndex, "index opened/created");
-    index = retIndex;
-    return index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]);
-}).then(resp => {
+var index = noise.open("myindex", true);
+index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
     assert.deepEqual(resp, ["a","b"], "docs created");
     return index.query('find {foo: =="bar"}')
 }).then(resp => {

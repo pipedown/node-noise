@@ -14,6 +14,6 @@ neon-build = "0.1.13"
 
 [dependencies]
 neon = "0.1.13"
-noise_search = "0.1.0"
+noise_search = { git = "https://github.com/pipedown/noise.git" }
 unix_socket = "0.5.0"
 lazy_static = "0.2.4"

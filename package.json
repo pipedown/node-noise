@@ -6,6 +6,7 @@
   "author": "Damien Katz <me@damienkatz.com>",
   "license": "Apache-2.0",
   "dependencies": {
+    "async": "^2.2.0",
     "neon-cli": "^0.1.13",
     "node-ipc": "^8.10.3",
     "unix-stream": "^1.0.2"
