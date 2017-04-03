@@ -22,7 +22,7 @@ use unix_socket::{UnixStream, UnixListener};
 
 use neon::vm::{Call, JsResult};
 use neon::js::{JsString, JsNumber, JsBoolean, JsNull, JsArray, JsObject,
-    JsUndefined, Object, Value, JsValue};
+    JsUndefined, Object, Value, JsValue, JsInteger};
 use neon::js::error::{JsError, Kind};
 use neon::mem::Handle;
 
@@ -124,90 +124,47 @@ fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
     Ok(JsUndefined::new())
 }
 
-fn js_open_index(call: Call) -> JsResult<JsUndefined> {
+fn js_send_message(call: Call) -> JsResult<JsUndefined> {
     let scope = call.scope;
-    let conn_id: Handle<JsString> = call.arguments.require(scope, 0)?.check::<JsString>()?;
-    let name: Handle<JsString> = call.arguments.require(scope, 1)?.check::<JsString>()?;
-    let create: Handle<JsBoolean> = call.arguments.require(scope, 2)?.check::<JsBoolean>()?;
-    let options = if create.value() {Some(OpenOptions::Create)} else {None};
-    let message = Message::OpenIndex(name.value(), options);
+    let conn_id: Handle<JsInteger> = call.arguments.require(scope, 0)?.check::<JsInteger>()?;
+    let msg_type: Handle<JsInteger> = call.arguments.require(scope, 1)?.check::<JsInteger>()?;
+    let args: Handle<JsArray> = call.arguments.require(scope, 2)?.check::<JsArray>()?;
+    
+    let vec = args.to_vec(scope)?;
+    let message = match msg_type.value() {
+        0 => { // open index
+            let name = vec[0].check::<JsString>()?.value();
+            let opt_create = if vec[1].check::<JsBoolean>()?.value() {Some(OpenOptions::Create)} else {None};
+            Message::OpenIndex(name, opt_create)
+        },
+        1 => { // drop index
+            Message::DropIndex(vec[0].check::<JsString>()?.value())
+        },
+        2 => { // add documents
+            Message::Add(vec.iter().map(|val| val.check::<JsString>().unwrap().value()).collect())
+        },
+        3 => { // delete documents
+            Message::Delete(vec.iter().map(|val| val.check::<JsString>().unwrap().value()).collect())
+        },
+        4 => { // query
+            Message::Query(vec[0].check::<JsString>()?.value())
+        },
+        5 => {
+            Message::Close
+        }
+        _ => {
+            return JsError::throw(Kind::Error, "unknown message type");
+        },
+    };
 
-    let connection_id: u64 = conn_id.value().parse().unwrap();
-    MESSAGE_MAP.lock().unwrap().deref_mut().insert(connection_id, Some(message));
+    MESSAGE_MAP.lock().unwrap().deref_mut().insert(conn_id.value() as u64, Some(message));
 
     Ok(JsUndefined::new())
-}
-
-fn js_drop_index(call: Call) -> JsResult<JsUndefined> {
-    let scope = call.scope;
-    let conn_id: Handle<JsString> = call.arguments.require(scope, 0)?.check::<JsString>()?;
-    let name: Handle<JsString> = call.arguments.require(scope, 1)?.check::<JsString>()?;
-    let message = Message::DropIndex(name.value());
-
-    let connection_id: u64 = conn_id.value().parse().unwrap();
-    MESSAGE_MAP.lock().unwrap().deref_mut().insert(connection_id, Some(message));
-
-    Ok(JsUndefined::new())
-}
-
-fn js_index_add(call: Call) -> JsResult<JsUndefined> {
-    let scope = call.scope;
-    let conn_id: Handle<JsString> = call.arguments.require(scope, 0)?.check::<JsString>()?;
-    let array: Handle<JsArray> = call.arguments.require(scope, 1)?.check::<JsArray>()?;
-    let node_vec = array.to_vec(scope)?;
-    let mut noise_vec = Vec::with_capacity(node_vec.len());
-    for val in node_vec.iter() {
-        noise_vec.push(val.check::<JsString>()?.value());
-    }
-    let message = Message::Add(noise_vec);
-    let connection_id: u64 = conn_id.value().parse().unwrap();
-    MESSAGE_MAP.lock().unwrap().deref_mut().insert(connection_id, Some(message));
-
-    Ok(JsUndefined::new())
-}
-
-fn js_index_delete(call: Call) -> JsResult<JsUndefined> {
-    let scope = call.scope;
-    let conn_id: Handle<JsString> = call.arguments.require(scope, 0)?.check::<JsString>()?;
-    let array: Handle<JsArray> = call.arguments.require(scope, 1)?.check::<JsArray>()?;
-    let node_vec = array.to_vec(scope)?;
-    let mut noise_vec = Vec::with_capacity(node_vec.len());
-    for val in node_vec.iter() {
-        noise_vec.push(val.check::<JsString>()?.value());
-    }
-    let message = Message::Delete(noise_vec);
-    let connection_id: u64 = conn_id.value().parse().unwrap();
-    MESSAGE_MAP.lock().unwrap().deref_mut().insert(connection_id, Some(message));
-
-    Ok(JsUndefined::new())
-}
-
-fn js_index_query(call: Call) -> JsResult<JsUndefined> {
-    let scope = call.scope;
-    let conn_id: Handle<JsString> = call.arguments.require(scope, 0)?.check::<JsString>()?;
-    let query: Handle<JsString> = call.arguments.require(scope, 1)?.check::<JsString>()?;
-    let message = Message::Query(query.value());
-    let connection_id: u64 = conn_id.value().parse().unwrap();
-    MESSAGE_MAP.lock().unwrap().deref_mut().insert(connection_id, Some(message));
-
-    Ok(JsUndefined::new())
-
-}
-
-fn js_index_close(call: Call) -> JsResult<JsUndefined> {
-    let scope = call.scope;
-    let conn_id: Handle<JsString> = call.arguments.require(scope, 0)?.check::<JsString>()?;
-    let connection_id: u64 = conn_id.value().parse().unwrap();
-    MESSAGE_MAP.lock().unwrap().deref_mut().insert(connection_id, Some(Message::Close));
-
-    Ok(JsUndefined::new())
-
 }
 
 fn js_get_response(mut call: Call) -> JsResult<JsValue> {
-    let conn_id: Handle<JsString> = call.arguments.require(call.scope, 0)?.check::<JsString>()?;
-    let connection_id: u64 = conn_id.value().parse().unwrap();
-    let res = match MESSAGE_MAP.lock().unwrap().deref_mut().get_mut(&connection_id) {
+    let conn_id = call.arguments.require(call.scope, 0)?.check::<JsInteger>()?.value() as u64;
+    let res = match MESSAGE_MAP.lock().unwrap().deref_mut().get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
         None => return JsError::throw(Kind::Error, "missing response"),
     };
@@ -468,12 +425,7 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
 
 register_module!(m, {
     m.export("startListener", js_start_listener)?;
-    m.export("openIndex", js_open_index)?;
-    m.export("dropIndex", js_drop_index)?;
-    m.export("indexAdd", js_index_add)?;
-    m.export("indexDelete", js_index_delete)?;
-    m.export("indexQuery", js_index_query)?;
-    m.export("indexClose", js_index_close)?;
-    m.export("getResponse", js_get_response)
+    m.export("getResponse", js_get_response)?;
+    m.export("sendMessage", js_send_message)
 });
 

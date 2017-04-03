@@ -20,10 +20,7 @@ exports['test basic'] = function(assert, done) {
         assert.ok(true, "index dropped");
         done();
     }).catch(error => {
-        if (index) {
-            index.close();
-        }
-        console.log("error: " + error);
+        console.log(error);
     });
 }
 
@@ -33,7 +30,7 @@ exports['test badopen'] = function(assert, done) {
         console.log(resp);
         assert.ok(false, "this should have failed");
     }).catch(error => {
-        assert.ok(true, "failed" + error);
+        assert.ok(true, "expected: " + error);
         done();
     });
 }
