@@ -16,6 +16,7 @@ use std::vec::Vec;
 use std::ops::DerefMut;
 use std::fs;
 use std::sync::{Arc, RwLock, Mutex};
+use std::ops::Deref;
 
 use unix_socket::{UnixStream, UnixListener};
 
@@ -50,6 +51,48 @@ lazy_static! {
 struct OpenedIndex {
     index: Index,
     open_count: usize,
+}
+
+struct OpenedIndexCleanupGuard {
+    index: Arc<RwLock<OpenedIndex>>,
+}
+
+impl Drop for OpenedIndexCleanupGuard {
+    fn drop(&mut self) {
+        let opt_name = {
+            let mut rw_guard = match self.index.write() {
+                Ok(rw_guard) => rw_guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            rw_guard.open_count -= 1;
+            if rw_guard.open_count == 0 {
+                Some(rw_guard.index.get_name().to_string())
+            } else {
+                None
+            }
+        };
+        if opt_name.is_some() {
+            let mut guard = match OPEN_INSTANCES.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            guard.deref_mut().remove(&opt_name.unwrap());
+        }
+    }
+}
+
+impl Deref for OpenedIndexCleanupGuard {
+    type Target = Arc<RwLock<OpenedIndex>>;
+
+    fn deref(&self) -> &Arc<RwLock<OpenedIndex>> {
+        &self.index
+    }
+}
+
+impl DerefMut for OpenedIndexCleanupGuard {
+    fn deref_mut(&mut self) -> &mut Arc<RwLock<OpenedIndex>> {
+        &mut self.index
+    }
 }
 
 // This lock only allows one index to be updated at a time.
@@ -265,30 +308,11 @@ fn handle_client_outer(stream: UnixStream) {
                         writer.write_all(&[b'1']).unwrap();
                         writer.flush().unwrap();
                     }
-                    let name_copy = name.clone();
+                    let index_guard = OpenedIndexCleanupGuard{index: index};
                     // now start servicing instance requests
-                    let result = panic::catch_unwind(|| {
-                        handle_client(name_copy, index, reader, connection_id);
+                    let _result = panic::catch_unwind(|| {
+                        handle_client(index_guard, reader, connection_id);
                     });
-                    if result.is_err() {
-                        // handle_client paniced, cleanup instance
-                        let mut guard = OPEN_INSTANCES.lock().unwrap();
-                        let mut map = guard.deref_mut();
-                        let remove_from_map = match map.get_mut(&name) {
-                            Some(opened_index) => {
-                                if opened_index.read().unwrap().open_count == 1 {
-                                    true
-                                } else {
-                                    opened_index.write().unwrap().open_count -= 1;
-                                    false
-                                }
-                            },
-                            None => false,
-                        };
-                        if remove_from_map {
-                            map.remove(&name);
-                        }
-                    }
                     {
                         // clean up message slot
                         MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);
@@ -333,7 +357,7 @@ fn handle_client_outer(stream: UnixStream) {
     }
 }
 
-fn handle_client(name: String, mut index: Arc<RwLock<OpenedIndex>>, mut reader: BufReader<UnixStream>, connection_id: u64) {
+fn handle_client(mut index: OpenedIndexCleanupGuard, mut reader: BufReader<UnixStream>, connection_id: u64) {
     let mut buf = Vec::new();
     loop {
         // from now on the stream only sends a single byte on value 0
@@ -348,22 +372,6 @@ fn handle_client(name: String, mut index: Arc<RwLock<OpenedIndex>>, mut reader: 
                 };
 
                 if let Message::Close = msg {
-                    let mut guard = OPEN_INSTANCES.lock().unwrap();
-                    let mut map = guard.deref_mut();
-                    let remove_from_map = match map.get_mut(&name) {
-                        Some(open_index) => {
-                            if open_index.read().unwrap().open_count == 1 {
-                                true
-                            } else {
-                                open_index.write().unwrap().open_count -= 1;
-                                false
-                            }
-                        },
-                        None => false,
-                    };
-                    if remove_from_map {
-                        map.remove(&name);
-                    }
                     return; // now we end the loop. The client will notice the socket close.
                 }
                 // process the message
@@ -387,7 +395,7 @@ fn handle_client(name: String, mut index: Arc<RwLock<OpenedIndex>>, mut reader: 
     }
 }
 
-fn process_message(index: &mut Arc<RwLock<OpenedIndex>>, message: Message) -> Message {
+fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Message {
     match message {
         Message::Add(vec) => {
             let mut results = Vec::with_capacity(vec.len());
