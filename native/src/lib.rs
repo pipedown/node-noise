@@ -267,9 +267,12 @@ fn handle_client_outer(stream: UnixStream) {
                     }
                     let index_guard = OpenedIndexCleanupGuard{index: index};
                     // now start servicing instance requests
-                    let _result = panic::catch_unwind(|| {
+                    let result = panic::catch_unwind(|| {
                         handle_client(index_guard, reader, connection_id);
                     });
+                    if result.is_err() {
+                        println!("panic happend!")
+                    }
                     {
                         // clean up message slot
                         MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);

@@ -24,7 +24,7 @@ exports['test basic'] = function(assert, done) {
     });
 }
 
-exports['test badopen'] = function(assert, done) {
+exports['test bad open'] = function(assert, done) {
     var index = noise.open("", true);
     index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         console.log(resp);
@@ -32,6 +32,23 @@ exports['test badopen'] = function(assert, done) {
     }).catch(error => {
         assert.ok(true, "expected: " + error);
         done();
+    });
+}
+
+exports['test bad query'] = function(assert, done) {
+    var index = noise.open("badquery", true);
+    index.query('find {foo: =="bar"').then(resp => {
+        console.log(resp);
+        assert.ok(false, "this should have failed");
+    }).catch(error => {
+        assert.ok(true, "expected: " + error);
+        index.close().then(() => {
+            return noise.drop("badquery");
+        }).then(() => {
+            done();
+        }).catch(error => {
+            assert.ok(false, "unexpected error: " + error);
+        })
     });
 }
 
@@ -69,10 +86,13 @@ exports['test multi instances opened'] = function(assert, done) {
         index2 = noise.open("multiinst", false);
         return index2.query('find {foo: == "bar"}');
     }).then(resp => {
-        assert.deepEqual(resp, ["a"]);
-        return index1.close();
-    }).then(() => {
+        assert.deepEqual(resp, ["a"], "found a on instance 2");
         return index2.close();
+    }).then(() => {
+        return index1.query('find {foo: == "bar"}')
+    }).then((resp) => {
+        assert.deepEqual(resp, ["a"], "found a on instance 1");
+        return index1.close();
     }).then(() => {
         return noise.drop("multiinst");
     }).then(() => {
