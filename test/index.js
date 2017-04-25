@@ -71,7 +71,11 @@ exports['test multi concurrent add'] = function(assert, done) {
             assert.ok(false, "add should have failed");
         }).catch(err => {
             assert.ok(true, "dropped index didn't reopen");
-            done();
+            // for some damn reason attempting to open an non-existant
+            // index creates the dir and a LOG and LOCK file. clean it up here.
+            noise.drop("multiadd").then(() => {
+                done();
+            });
         });
     }).catch(error => {
         assert.ok(false, "failed" + error);
@@ -101,7 +105,11 @@ exports['test multi instances opened'] = function(assert, done) {
             assert.ok(false, "shouldn't happen");
         }).catch(err => {
             assert.ok(true, "dropped index didn't reopen");
-            done();
+            // for some damn reason attempting to open an non-existant
+            // index creates the dir and a LOG and LOCK file. clean it up here.
+            noise.drop("multiinst").then(() => {
+                done();
+            });
         });
     }).catch(error => {
         assert.ok(false, "failed " + error);
