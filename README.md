@@ -155,7 +155,7 @@ If you do not include an `_id` field, a UUID will be generated and assigned to t
 
 # Query Language
 
-The Noise query language is an expressive example-based syntax for finding documents, formatting and returning specific information in the documents, performing relevancy scoring, sorting and aggregations.
+The Noise query language is an expressive example-based syntax for finding documents, formatting and returning specific information in the documents, performing relevancy scoring, ordering and aggregations.
 
 ## Find Clause
 
@@ -205,17 +205,15 @@ find {body: ~50= "bitcoin gold price"}
 
 Noise supports the following comparison operators:
 
-|Operator|Description|
----------|-----------
-|`==`|Equality|
-|`>`|Less Than|
-|`<`|Greater Than|
-|`>=`|Less Than or Equal|
-|`<=`|Greater Than or Equal|
+|Operator|Description|Types
+---------|-----------|-----
+|`==`|Equality|Strings, Numbers, true, false, null
+|`>`|Less Than|Numbers
+|`<`|Greater Than|Numbers
+|`>=`|Less Than or Equal|Numbers
+|`<=`|Greater Than or Equal|Numbers
 
-Noise does not do type conversions of datatypes. Strings only compare with strings, number only compare with numbers.
-
-`null` `true` and `false` only work with `==`.
+Noise does not do type conversions of datatypes. Strings only compare with strings, number only compare with numbers, etc.
 
 ### Finding Things in Arrays
 
@@ -310,11 +308,11 @@ find {foo ~= "waz" && !(foo: ~= "bar" && foo: !~= "baz"})
 
 Relevancy scoring uses a combination boolean model and Term Frequency/Inverse Document Frequency (TF/IDF) scoring system, very similar to Lucene and Elastic Search. The details of the scoring model is beyond the scope of the document.
 
-To return results in relevancy score order (most relevant first), simply use the sort clause with the `score()` function.
+To return results in relevancy score order (most relevant first), simply use the order clause with the `score()` function.
 
 ```
 find {subject: ~= "hammer" || body: ~= "hammer"}
-sort score() desc
+order score() desc
 ```
 
 But if want matches in subject fields to score higher than in body fields, you can boost the score with the `^` operator. It is a multiplier of the scores of associated clauses.
@@ -323,7 +321,7 @@ This boosts subject matches by 2x:
 
 ```
 find {subject: ~= "hammer"^2 || body: ~= "hammer"}
-sort score() desc
+order score() desc
 ```
 
 You can also boost everything in parenthesis or objects or arrays:
@@ -331,56 +329,56 @@ You can also boost everything in parenthesis or objects or arrays:
 ```
 find {(subject: ~= "hammer" || subject: ~= "nails")^2 || 
        body: ~= "hammer" ||  body: ~= "nails"}
-sort score() desc
+order score() desc
 ```
 Another way to express the same thing:
 
 ```
 find {subject: ~= "hammer" || subject: ~= "nails"}^2 ||
      {body: ~= "hammer" || body: ~= "nails"}
-sort score() desc
+order score() desc
 ```
 
 
-## Sort Clause
+## Order Clause
 
-To sort results in a particular order, use the sort clause.
+To return results in a particular order, use the order clause.
 
-This will sort results ascending based on the contents of the `baz` field:
-
-```
-find {foo: =="bar"}
-sort .baz
-```
-
-If `baz` doesn't existing, `null` be the value used for sorting.
-
-This will sort `baz` descending:
+This will order results ascending based on the contents of the `baz` field:
 
 ```
 find {foo: =="bar"}
-sort .baz
+order .baz
 ```
 
-This will sort `baz` ascending:
+If `baz` doesn't existing, `null` be the value used for ordering.
 
-```
-find {foo: =="bar"}
-sort .baz asc
-```
-
-This will sort `baz` ascending with default value of `1` if no `baz` value exists:
+This will order `baz` descending:
 
 ```
 find {foo: =="bar"}
-sort .baz asc default=1
+order .baz
 ```
 
-This will sort `baz` ascending, for values of `baz` that are the same, those results are now sorted as `biz` ascending.
+This will order `baz` ascending:
 
 ```
 find {foo: =="bar"}
-sort .baz asc, .biz dsc
+order .baz asc
+```
+
+This will order `baz` ascending with default value of `1` if no `baz` value exists:
+
+```
+find {foo: =="bar"}
+order .baz asc default=1
+```
+
+This will order `baz` ascending, for values of `baz` that are the same, those results are now ordered as `biz` ascending.
+
+```
+find {foo: =="bar"}
+order .baz asc, .biz dsc
 ```
 
 ## Return Clause
@@ -549,7 +547,7 @@ The aggregation functions available are:
 
 To perform grouping and/or aggregate, each field returned will need either a grouping or a aggregate function. It's an error it on some returned fields but not others.
 
-Groupings are are sorted first on the leftmost `group(...)` function, then on the next leftmost, etc.
+Groupings are are ordered first on the leftmost `group(...)` function, then on the next leftmost, etc.
 
 You do not need to use `group(...)` to perform aggregates. If you have no `group(...)` defined, then all rows are aggregated into a single row.
 
