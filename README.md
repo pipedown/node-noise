@@ -2,14 +2,14 @@
 
 Noise is a JSON full text and query engine that runs directly inside of Node.js.
 
-It's written in Rust and uses RocksDB as the storage layer.
+It's written in [Rust](https://www.rust-lang.org) and uses [RocksDB](http://rocksdb.org/) as the storage layer.
 
 
 # Installation
 
 Currently only OS X and Linux are supported. Help wanted for porting to other platforms.
 
-You'll need to install the [Rust Compiler](https://www.rust-lang.org/en-US/install.html) before installing the NPM package. 
+You'll need to install the [Rust Compiler](https://www.rust-lang.org/en-US/install.html) before installing the NPM package.
 
 
 # Javascript API
@@ -32,34 +32,34 @@ let index = noise.open("myindex", true);
 
 ## Adding Documents
 
-After the index is opened you use `add` method on the index to add documents.
+After the index is opened you use `add` method on the index to add documents. See the [Documents](#documents) section for more information about the document structure.
 
 You can add a single document, or batch documents into an array. Batching many documents is much faster than adding single documents at a time.
 
-The successful return result is an array of the ids of the array corresponding to the array supplied. If a document can't be inserted for some reason (for example you set `_id` field to a non-string) it has an `{"error": "<reason>}` in its array slot. some
+The successful return result is an array of the ids of the array corresponding to the array supplied. If a document can't be inserted for some reason (for example you set `_id` field to a non-string) it has an `{"error": "<reason>}` in its array slot.
 
 ```javascript
 
 // add documents -- batch is faster
 index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
 	assert.equal(2, resp.length, "added 2 documents");
-	
+
 	// add a document -- single is slower
     return index.add({_id:"c",foo:"bar"});
-    
+
 }).then(resp => {
 	assert.equal(1, resp.length, "added 1 document");
-	
+
 }).catch(error => {
     console.log("error: " + error);
 });
 ```
 
-If you add a document with the same _id as a previously added document, the document is then replaced with the new document.
+If you add a document with the same `_id` as a previously added document, the document is then replaced with the new document.
 
 ## Querying
 
-To perform a query, use the `.query(...)` on the index object.
+To perform a query, use the `.query(...)` on the index object. See the [Query Language](#query-language) section for more information about the query syntax. The return value is always an array of the matching documents. See the [Return Clause](#return-clause) section for more information about the possible return values.
 
 ```javascript
 index.query('find {foo: =="bar"}').then(resp => {
@@ -69,7 +69,7 @@ index.query('find {foo: =="bar"}').then(resp => {
 
 ## Deleting Documents
 
-You can delete documents by passing in the _id of the documents to the `.delete(...)` method.
+You can delete documents by passing in an array of `_id`s of the documents to the `.delete(...)` method. It returns an array of booleans where each elements indicates whether the deletion of the individual document was successful or not.
 
 ```javascript
 index.delete(["a", "b"]).then(resp => {
@@ -79,9 +79,9 @@ index.delete(["a", "b"]).then(resp => {
 });
 ```
 
-## Closing an index
+## Closing an Index
 
-To close an index, use the `.close()` method.
+To close an index, use the `.close()` method. Returns `true` on success.
 
 ```javascript
 index.close().then(() => {
@@ -95,7 +95,7 @@ index.close().then(() => {
 
 To delete a whole index (all index files deleted from disk irreversibly) use the drop method on the `noise` object.
 
-For this to work **ALL INSTANCES OF THE INDEX MUST BE CLOSED FIRST**.
+For this to work **ALL INSTANCES OF THE INDEX MUST BE CLOSED FIRST**. Returns `true` on success.
 
 ```javascript
 noise.drop("myindex").then(() => {
@@ -110,7 +110,7 @@ noise.drop("myindex").then(() => {
 ```javascript
 var noise = require('noise-search'),
     assert = require('assert');
-    
+
 var index = noise.open("myindex", true);
 index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
     assert.deepEqual(resp, ["a","b"], "docs created");
@@ -140,7 +140,7 @@ Each instance of an index opened can only respond to one request at a time. To i
 
 Adding documents to multiple instances at the same time is safe.
 
-Be careful about opening too many instances. The cost of context switching for many threads start to dominate CPU and slow down all instances.
+Be careful about opening too many instances. The cost of context switching for many threads starts to dominate CPU and slows down all instances.
 
 
 # Documents
@@ -159,7 +159,7 @@ The Noise query language is an expressive example-based syntax for finding docum
 
 ## Find Clause
 
-All queries have a find clause followed by an example based query syntax.
+All queries have a find clause followed by an example based query syntax. It is a combination of expressions that consist of three parts: The key to query, an operator and the value to match.
 
 This query will return the `_id` of every document with a `{"foo": "bar",...}`
 
@@ -247,19 +247,19 @@ Noise has full support for boolean logic using `&&` (logical AND) and `||` (logi
 
 The comma `,` in objects is actually the same as the `&&` operator. They can be used interchangeably for which ever is more readable.
 
-Find a doc with foo or bar in the body:
+Find a doc with `foo` or `bar` in the `body`:
 
 ```
 find {body: ~= "foo" || body: ~= "bar"}
 ```
 
-Find a doc that has foo or bar and has baz or biz in the body:
+Find a doc that has `foo` or `bar` and has `baz` or `biz` in the `body`:
 
 ```
 find {(body: ~= "foo" || body: ~= "bar") && (body: ~= "baz" || body: ~= "biz")}
 ```
 
-The fields can be nested as well:
+The fields can be nested as well. Find a doc where either the nested field `fiz` contains either `baz` or `biz`.
 
 ```
 find {foo: {fiz: ~= "baz" || fiz: ~= "biz"}}
@@ -270,13 +270,13 @@ find {foo: {fiz: ~= "baz" || fiz: ~= "biz"}}
 
 Use the `!` (logical NOT) to exclude matching criteria.
 
-Find docs where foo has value "bar" and fab does not have value "baz":
+Find docs where `foo` has value `bar` and `fab` does not have value `baz`:
 
 ```
 find {foo: == "bar", fab: !== "baz"}
 ```
 
-You can use logical not with parens to negate everything enclosed. This example finds docs where foo has value "bar" and fab does not have value "baz" or biz':
+You can use logical not with parentheses to negate everything enclosed. This example finds docs where `foo` has value `bar` and `fab` does not have value `baz` or `biz`':
 
 ```
 find {foo: == "bar", !(fab: == "baz" || fab: == "biz")}
@@ -315,9 +315,9 @@ find {subject: ~= "hammer" || body: ~= "hammer"}
 order score() desc
 ```
 
-But if want matches in subject fields to score higher than in body fields, you can boost the score with the `^` operator. It is a multiplier of the scores of associated clauses.
+But if want matches in `subject` fields to score higher than in `body` fields, you can boost the score with the `^` operator. It is a multiplier of the scores of associated clauses.
 
-This boosts subject matches by 2x:
+This boosts `subject` matches by 2x:
 
 ```
 find {subject: ~= "hammer"^2 || body: ~= "hammer"}
@@ -327,7 +327,7 @@ order score() desc
 You can also boost everything in parenthesis or objects or arrays:
 
 ```
-find {(subject: ~= "hammer" || subject: ~= "nails")^2 || 
+find {(subject: ~= "hammer" || subject: ~= "nails")^2 ||
        body: ~= "hammer" ||  body: ~= "nails"}
 order score() desc
 ```
@@ -385,6 +385,21 @@ order .baz asc, .biz dsc
 
 The return clause is how data or scoring is returned to the client. You can extract the whole document, a single field, multiple fields, and perform aggregations.
 
+For this section these examples the following document will be used:
+
+```
+{
+  "_id": "example",
+  "foo": "bar",
+  "baz": {"biz": "bar"},
+  "faz": [
+    {"fiz": 213},
+    {"biz": 5463},
+    {"biz": 73}
+  ]
+}
+```
+
 ### Basic Dot Notation
 
 A leading dot indicates the root of the document. To return the whole document, place a single dot in return clause.
@@ -401,6 +416,7 @@ To return a specific field, place the field name after the dot:
 ```
 find {foo: == "bar"}
 return .baz
+// [{"biz": "bar"}]
 ```
 
 To return a nested field, use another dot:
@@ -408,36 +424,47 @@ To return a nested field, use another dot:
 ```
 find {foo: == "bar"}
 return .baz.biz
+// ["bar"]
 ```
 
 To return an array element, use the array notation:
 
 ```
 find {foo: == "bar"}
-return .baz[1]
+return .faz[1]
+// [{"biz": 5463}]
 ```
 
-To return aa object field nested in the array, add a dot after the array notation:
+To return an object field nested in the array, add a dot after the array notation:
 
 ```
 find {foo: == "bar"}
-return .baz[1].biz
+return .faz[1].biz
+// [5463]
 ```
 
-To return multiple values, embed the return paths in other json structures.
+To return multiple values, embed the return paths in other JSON structures.
 
 For each match this example return 2 values inside an array:
 
 ```
 find {foo: == "bar"}
-return [.baz, .biz]
+return [.baz, .faz]
+// [[
+//   {"biz": "bar"},
+//   [{"fiz": 213}, {"biz": 5463}, {"biz": 73}]
+// ]]
 ```
 
 For each match this example return 2 values inside an object:
 
 ```
 find {foo: == "bar"}
-return {baz: .baz, biz: .biz}
+return {baz: .baz, faz: .faz}
+// [{
+//   "baz": {"biz": "bar"},
+//   "faz": [{"fiz": 213}, {"biz": 5463}, {"biz": 73}]
+// }]
 ```
 
 ### Missing Values
@@ -448,14 +475,19 @@ If you'd like a different value to be returned, use the `default=<json>` option,
 
 ```
 find {foo: == "bar"}
-return .baz default=0
+return .hammer default=0
+// [0]
 ```
 
 Each returned value can have a default as well.
 
 ```
 find {foo: == "bar"}
-return {baz: .baz default=0, biz: .biz default=1}
+return {baz: .baz default=0, hammer: .hammer default=1}
+// [{
+//   "baz": {"biz": "bar"},
+//   "hammer": 1
+// }]
 ```
 
 
@@ -468,7 +500,8 @@ This will return each biz field as an array of values:
 
 ```
 find {foo: == "bar"}
-return .baz[*].biz
+return .faz[*].biz
+// [[5463, 73]]
 ```
 
 ### Bind Variables: Return Only Matched Array Elements
@@ -481,11 +514,12 @@ Say you have a document like this:
 {"foo":[{"fiz":"bar", "val":4}, {"fiz":"baz", "val":7}]}
 ```
 
-You want to return the object where `{"fiz":"bar",...}`, use you a bind variable (`var::[...]`), like this:
+You want to return the object where `{"fiz":"bar",...}` (but not the others), use you a bind variable (`var::[...]`), like this:
 
 ```
 find {foo: x::[{fiz: == "bar"}]}
 return x
+// [[{"fiz": "bar", "val": 4}]]
 ```
 
 If instead you want to return the `val` field, add the `.val` to the bind variable like this:
@@ -493,6 +527,7 @@ If instead you want to return the `val` field, add the `.val` to the bind variab
 ```
 find {foo: x::[{fiz: == "bar"}]}
 return x.val
+// [[4]]
 ```
 
 You can have any number of bind variables:
@@ -500,6 +535,7 @@ You can have any number of bind variables:
 ```
 find {foo: x::[{fiz: == "bar"}], foo: y::[{fiz: == "baz"}]}
 return [x.val, y.val]
+// [[[4], [7]]]
 ```
 
 You can reuse bind variables in different clauses and they'll be combined:
