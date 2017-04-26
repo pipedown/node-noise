@@ -116,4 +116,55 @@ exports['test multi instances opened'] = function(assert, done) {
     });
 };
 
+exports['test completely empty document'] = function(assert, done) {
+    var index = noise.open("emptydocument", true);
+    var doc = {};
+    var id;
+    index.add([doc]).then(resp => {
+        assert.equal(resp.length, 1, "doc created");
+        id = resp[0];
+        return index.query('find {_id: == "' + id + '"} return .');
+    }).then(resp => {
+        console.log(resp);
+        assert.deepEqual(resp, [{_id: id}], "Empty document is possible");
+        done();
+    }).catch(error => {
+        console.log(error);
+    });
+};
+
+exports['test document without _id'] = function(assert, done) {
+    var index = noise.open("withoutid", true);
+    var doc = {foo: 'bar'};
+    var id;
+    index.add([doc]).then(resp => {
+        assert.equal(resp.length, 1, "doc created");
+        id = resp[0];
+        return index.query('find {_id: == "' + id + '"} return .');
+    }).then(resp => {
+        console.log(resp);
+        assert.deepEqual(resp, [{_id: id, foo: "bar"}],
+                         "Document without _id is possible");
+        done();
+    }).catch(error => {
+        console.log(error);
+    });
+};
+
+exports['test document with _id only'] = function(assert, done) {
+    var index = noise.open("idonly", true);
+    var doc = {_id: "a"};
+    index.add([doc]).then(resp => {
+        assert.deepEqual(resp, ["a"], "doc created");
+        return index.query('find {_id: == "a"} return .');
+    }).then(resp => {
+        console.log(resp);
+        assert.deepEqual(resp, [{_id: "a"}],
+                         "Document with _id only is returned correctly");
+        done();
+    }).catch(error => {
+        console.log(error);
+    });
+};
+
 if (module == require.main) require('test').run(exports)
