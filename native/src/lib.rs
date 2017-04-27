@@ -21,13 +21,13 @@ use std::ops::Deref;
 use unix_socket::{UnixStream, UnixListener};
 
 use neon::vm::{Call, JsResult};
-use neon::js::{JsString, JsNumber, JsBoolean, JsNull, JsArray, JsObject,
-    JsUndefined, Object, Value, JsValue, JsInteger};
+use neon::js::{JsString, JsNumber, JsBoolean, JsNull, JsArray, JsObject, JsUndefined, Object,
+               Value, JsValue, JsInteger};
 use neon::js::error::{JsError, Kind};
 use neon::mem::Handle;
 
 use noise_search::index::{Index, OpenOptions, Batch};
-use noise_search::query::{Query};
+use noise_search::query::Query;
 use noise_search::json_value::JsonValue;
 
 enum Message {
@@ -126,55 +126,77 @@ fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
 
 fn js_send_message(call: Call) -> JsResult<JsUndefined> {
     let scope = call.scope;
-    let conn_id: Handle<JsInteger> = call.arguments.require(scope, 0)?.check::<JsInteger>()?;
-    let msg_type: Handle<JsInteger> = call.arguments.require(scope, 1)?.check::<JsInteger>()?;
+    let conn_id: Handle<JsInteger> = call.arguments
+        .require(scope, 0)?
+        .check::<JsInteger>()?;
+    let msg_type: Handle<JsInteger> = call.arguments
+        .require(scope, 1)?
+        .check::<JsInteger>()?;
     let args: Handle<JsArray> = call.arguments.require(scope, 2)?.check::<JsArray>()?;
-    
+
     let vec = args.to_vec(scope)?;
     let message = match msg_type.value() {
-        0 => { // open index
+        0 => {
+            // open index
             let name = vec[0].check::<JsString>()?.value();
-            let opt_create = if vec[1].check::<JsBoolean>()?.value() {Some(OpenOptions::Create)} else {None};
+            let opt_create = if vec[1].check::<JsBoolean>()?.value() {
+                Some(OpenOptions::Create)
+            } else {
+                None
+            };
             Message::OpenIndex(name, opt_create)
-        },
-        1 => { // drop index
-            Message::DropIndex(vec[0].check::<JsString>()?.value())
-        },
-        2 => { // add documents
-            Message::Add(vec.iter().map(|val| val.check::<JsString>().unwrap().value()).collect())
-        },
-        3 => { // delete documents
-            Message::Delete(vec.iter().map(|val| val.check::<JsString>().unwrap().value()).collect())
-        },
-        4 => { // query
-            Message::Query(vec[0].check::<JsString>()?.value())
-        },
-        5 => {
-            Message::Close
         }
+        1 => {
+            // drop index
+            Message::DropIndex(vec[0].check::<JsString>()?.value())
+        }
+        2 => {
+            // add documents
+            Message::Add(vec.iter()
+                             .map(|val| val.check::<JsString>().unwrap().value())
+                             .collect())
+        }
+        3 => {
+            // delete documents
+            Message::Delete(vec.iter()
+                                .map(|val| val.check::<JsString>().unwrap().value())
+                                .collect())
+        }
+        4 => {
+            // query
+            Message::Query(vec[0].check::<JsString>()?.value())
+        }
+        5 => Message::Close,
         _ => {
             return JsError::throw(Kind::Error, "unknown message type");
-        },
+        }
     };
 
-    MESSAGE_MAP.lock().unwrap().deref_mut().insert(conn_id.value() as u64, Some(message));
+    MESSAGE_MAP
+        .lock()
+        .unwrap()
+        .deref_mut()
+        .insert(conn_id.value() as u64, Some(message));
 
     Ok(JsUndefined::new())
 }
 
 fn js_get_response(mut call: Call) -> JsResult<JsValue> {
-    let conn_id = call.arguments.require(call.scope, 0)?.check::<JsInteger>()?.value() as u64;
-    let res = match MESSAGE_MAP.lock().unwrap().deref_mut().get_mut(&conn_id) {
+    let conn_id = call.arguments
+        .require(call.scope, 0)?
+        .check::<JsInteger>()?
+        .value() as u64;
+    let res = match MESSAGE_MAP
+              .lock()
+              .unwrap()
+              .deref_mut()
+              .get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
         None => return JsError::throw(Kind::Error, "missing response"),
     };
     match res.unwrap() {
-        Message::ResponseOk(json) => {
-            Ok(convert_json(&mut call, json))
-        },
-        Message::ResponseError(msg) => {
-            JsError::throw(Kind::Error, &msg)
-        },
+        Message::ResponseOk(json) => Ok(convert_json(&mut call, json)),
+        Message::ResponseError(msg) => JsError::throw(Kind::Error, &msg),
         _ => panic!("Non-response message"),
     }
 }
@@ -182,7 +204,11 @@ fn js_get_response(mut call: Call) -> JsResult<JsValue> {
 fn convert_json<'a>(mut call: &mut Call<'a>, json_in: JsonValue) -> Handle<'a, JsValue> {
     match json_in {
         JsonValue::Number(n) => JsNumber::new(call.scope, n).as_value(call.scope),
-        JsonValue::String(s) => JsString::new(call.scope, &s).unwrap().as_value(call.scope),
+        JsonValue::String(s) => {
+            JsString::new(call.scope, &s)
+                .unwrap()
+                .as_value(call.scope)
+        }
         JsonValue::True => JsBoolean::new(call.scope, true).as_value(call.scope),
         JsonValue::False => JsBoolean::new(call.scope, false).as_value(call.scope),
         JsonValue::Null => JsNull::new().as_value(call.scope),
@@ -192,14 +218,14 @@ fn convert_json<'a>(mut call: &mut Call<'a>, json_in: JsonValue) -> Handle<'a, J
                 assert!(obj.set(&key as &str, convert_json(call, value)).is_ok());
             }
             obj.as_value(call.scope)
-        },
+        }
         JsonValue::Array(vec) => {
             let array = JsArray::new(call.scope, vec.len() as u32);
             for (n, value) in vec.into_iter().enumerate() {
                 assert!(array.set(n as u32, convert_json(call, value)).is_ok());
             }
             array.as_value(call.scope)
-        },
+        }
     }
 }
 
@@ -208,28 +234,37 @@ fn handle_client_outer(stream: UnixStream) {
     let mut buf = Vec::new();
 
     // first get our connection_id through the pipe.
-    let connection_id = match reader.read_until(b';',&mut buf) {
+    let connection_id = match reader.read_until(b';', &mut buf) {
         Ok(_size) => {
             buf.pop(); // remove trailing ';'
             str::from_utf8(&buf).unwrap().parse::<u64>().unwrap()
-        },
+        }
         Err(msg) => {
             println!("Error reading socket: {}", msg);
             return;
-        },
+        }
     };
-    
+
     match reader.read_until(b'0', &mut buf) {
         Ok(0) => return,
         Ok(1) => {
             // first get the message
             let msg = {
-                MESSAGE_MAP.lock().unwrap().deref_mut()
-                    .get_mut(&connection_id).unwrap().take().unwrap()
+                MESSAGE_MAP
+                    .lock()
+                    .unwrap()
+                    .deref_mut()
+                    .get_mut(&connection_id)
+                    .unwrap()
+                    .take()
+                    .unwrap()
             };
             match msg {
                 Message::OpenIndex(name, options) => {
-                    let mut index = Arc::new(RwLock::new(OpenedIndex{index: Index::new(), open_count: 1}));
+                    let mut index = Arc::new(RwLock::new(OpenedIndex {
+                                                             index: Index::new(),
+                                                             open_count: 1,
+                                                         }));
                     let resp = {
                         let mut guard = OPEN_INSTANCES.lock().unwrap();
                         let mut map = guard.deref_mut();
@@ -239,14 +274,14 @@ fn handle_client_outer(stream: UnixStream) {
                                 index = opened_index.clone();
                                 opened_index.write().unwrap().open_count += 1;
                                 false
-                            },
+                            }
                         };
                         if needs_opening {
                             match index.write().unwrap().index.open(&name, options) {
                                 Ok(()) => {
                                     map.insert(name.clone(), index.clone());
                                     Message::ResponseOk(JsonValue::True)
-                                },
+                                }
                                 Err(msg) => Message::ResponseError(msg.description().to_string()),
                             }
                         } else {
@@ -255,8 +290,12 @@ fn handle_client_outer(stream: UnixStream) {
                     };
                     // put the response in the queue
                     {
-                        *MESSAGE_MAP.lock().unwrap().deref_mut()
-                            .get_mut(&connection_id).unwrap() = Some(resp);
+                        *MESSAGE_MAP
+                             .lock()
+                             .unwrap()
+                             .deref_mut()
+                             .get_mut(&connection_id)
+                             .unwrap() = Some(resp);
                     }
 
                     {
@@ -265,19 +304,24 @@ fn handle_client_outer(stream: UnixStream) {
                         writer.write_all(&[b'1']).unwrap();
                         writer.flush().unwrap();
                     }
-                    let index_guard = OpenedIndexCleanupGuard{index: index};
+                    let index_guard = OpenedIndexCleanupGuard { index: index };
                     // now start servicing instance requests
-                    let result = panic::catch_unwind(|| {
-                        handle_client(index_guard, reader, connection_id);
-                    });
+                    let result =
+                        panic::catch_unwind(|| {
+                                                handle_client(index_guard, reader, connection_id);
+                                            });
                     if result.is_err() {
                         println!("panic happend!")
                     }
                     {
                         // clean up message slot
-                        MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);
+                        MESSAGE_MAP
+                            .lock()
+                            .unwrap()
+                            .deref_mut()
+                            .remove(&connection_id);
                     }
-                },
+                }
                 Message::DropIndex(name) => {
                     let mut guard = OPEN_INSTANCES.lock().unwrap();
                     let map = guard.deref_mut();
@@ -291,8 +335,12 @@ fn handle_client_outer(stream: UnixStream) {
                     };
                     {
                         // put the response in the queue
-                        *MESSAGE_MAP.lock().unwrap().deref_mut()
-                            .get_mut(&connection_id).unwrap() = Some(resp);
+                        *MESSAGE_MAP
+                             .lock()
+                             .unwrap()
+                             .deref_mut()
+                             .get_mut(&connection_id)
+                             .unwrap() = Some(resp);
                     }
                     {
                         // notify the client the response is ready
@@ -301,23 +349,29 @@ fn handle_client_outer(stream: UnixStream) {
                         writer.flush().unwrap();
                     }
 
-                    // when the socket closes we'll know we can cleanup the message slot.
+                    // when the socket closes we'll know we can clean up the message slot.
                     let _ = reader.read_until(b'0', &mut buf);
                     {
                         // clean up message slot
-                        MESSAGE_MAP.lock().unwrap().deref_mut().remove(&connection_id);
+                        MESSAGE_MAP
+                            .lock()
+                            .unwrap()
+                            .deref_mut()
+                            .remove(&connection_id);
                     }
 
-                },
+                }
                 _ => panic!("unexpected message"),
             }
-        },
+        }
         Ok(_size) => panic!("WTF, more than one byte read!"),
         Err(msg) => println!("Error reading socket: {}", msg),
     }
 }
 
-fn handle_client(mut index: OpenedIndexCleanupGuard, mut reader: BufReader<UnixStream>, connection_id: u64) {
+fn handle_client(mut index: OpenedIndexCleanupGuard,
+                 mut reader: BufReader<UnixStream>,
+                 connection_id: u64) {
     let mut buf = Vec::new();
     loop {
         // from now on the stream only sends a single byte on value 0
@@ -327,8 +381,14 @@ fn handle_client(mut index: OpenedIndexCleanupGuard, mut reader: BufReader<UnixS
             Ok(1) => {
                 // first get the message
                 let msg = {
-                    MESSAGE_MAP.lock().unwrap().deref_mut()
-                        .get_mut(&connection_id).unwrap().take().unwrap()
+                    MESSAGE_MAP
+                        .lock()
+                        .unwrap()
+                        .deref_mut()
+                        .get_mut(&connection_id)
+                        .unwrap()
+                        .take()
+                        .unwrap()
                 };
 
                 if let Message::Close = msg {
@@ -339,18 +399,22 @@ fn handle_client(mut index: OpenedIndexCleanupGuard, mut reader: BufReader<UnixS
 
                 // put the response in the queue
                 {
-                    *MESSAGE_MAP.lock().unwrap().deref_mut()
-                        .get_mut(&connection_id).unwrap() = Some(response);
+                    *MESSAGE_MAP
+                         .lock()
+                         .unwrap()
+                         .deref_mut()
+                         .get_mut(&connection_id)
+                         .unwrap() = Some(response);
                 }
 
                 // notify the client the response is ready
                 let mut writer = reader.get_mut();
                 writer.write_all(&[b'1']).unwrap();
                 writer.flush().unwrap();
-                
-            },
+
+            }
             Ok(_size) => panic!("WTF, more than one byte read!"),
-            Err(msg) => println!("Error reading socket: {}", msg)
+            Err(msg) => println!("Error reading socket: {}", msg),
         }
     }
 }
@@ -368,16 +432,14 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
                         let err_str = JsonValue::String(reason.description().to_string());
                         let err_obj = vec![("error".to_string(), err_str)];
                         results.push(JsonValue::Object(err_obj))
-                    },
+                    }
                 }
             }
             match index.flush(batch) {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
-                Err(reason) => {
-                    Message::ResponseError(reason.description().to_string())
-                },
+                Err(reason) => Message::ResponseError(reason.description().to_string()),
             }
-        },
+        }
         Message::Delete(vec) => {
             let ref mut index = index.write().unwrap().index;
             let mut batch = Batch::new();
@@ -390,16 +452,14 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
                         let err_str = JsonValue::String(reason.description().to_string());
                         let err_obj = vec![("error".to_string(), err_str)];
                         results.push(JsonValue::Object(err_obj))
-                    },
+                    }
                 }
             }
             match index.flush(batch) {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
-                Err(reason) => {
-                    Message::ResponseError(reason.description().to_string())
-                },
+                Err(reason) => Message::ResponseError(reason.description().to_string()),
             }
-        },
+        }
         Message::Query(query) => {
             let ref index = index.read().unwrap().index;
             let msg = match Query::get_matches(&query, index) {
@@ -407,19 +467,19 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
                 Err(reason) => Message::ResponseError(reason.description().to_string()),
             };
             msg
-        },
+        }
         Message::Close => {
             panic!("Can't get close message here!");
-        },
+        }
         Message::ResponseOk(_json) => {
             panic!("Got ResponseOk on wrong side!");
-        },
+        }
         Message::ResponseError(_string) => {
             panic!("Got ResponseError on wrong side!");
-        },
-        Message::OpenIndex(_,_) => {
+        }
+        Message::OpenIndex(_, _) => {
             panic!("Can't get OpenIndex message here!");
-        },
+        }
         Message::DropIndex(_) => {
             panic!("Can't get DropIndex message here!");
         }
@@ -431,4 +491,3 @@ register_module!(m, {
     m.export("getResponse", js_get_response)?;
     m.export("sendMessage", js_send_message)
 });
-
