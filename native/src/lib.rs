@@ -17,6 +17,7 @@ use std::ops::DerefMut;
 use std::fs;
 use std::sync::{Arc, RwLock, Mutex};
 use std::ops::Deref;
+use std::mem::drop;
 
 use unix_socket::{UnixStream, UnixListener};
 
@@ -392,6 +393,7 @@ fn handle_client(mut index: OpenedIndexCleanupGuard,
                 };
 
                 if let Message::Close = msg {
+                    drop(index); // make sure index instance is closed first
                     return; // now we end the loop. The client will notice the socket close.
                 }
                 // process the message
