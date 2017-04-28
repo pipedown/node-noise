@@ -125,7 +125,6 @@ exports['test completely empty document'] = function(assert, done) {
         id = resp[0];
         return index.query('find {_id: == "' + id + '"} return .');
     }).then(resp => {
-        console.log(resp);
         assert.deepEqual(resp, [{_id: id}], "Empty document is possible");
         done();
     }).catch(error => {
@@ -142,7 +141,6 @@ exports['test document without _id'] = function(assert, done) {
         id = resp[0];
         return index.query('find {_id: == "' + id + '"} return .');
     }).then(resp => {
-        console.log(resp);
         assert.deepEqual(resp, [{_id: id, foo: "bar"}],
                          "Document without _id is possible");
         done();
@@ -158,7 +156,6 @@ exports['test document with _id only'] = function(assert, done) {
         assert.deepEqual(resp, ["a"], "doc created");
         return index.query('find {_id: == "a"} return .');
     }).then(resp => {
-        console.log(resp);
         assert.deepEqual(resp, [{_id: "a"}],
                          "Document with _id only is returned correctly");
         done();
