@@ -167,4 +167,106 @@ exports['test document with _id only'] = function(assert, done) {
     });
 };
 
+exports['test readme returns'] = function(assert, done) {
+    var index = noise.open("readmereturns", true);
+    var doc = {
+        "_id": "example",
+        "foo": "bar",
+        "baz": {"biz": "bar"},
+        "faz": [
+            {"fiz": 213},
+            {"biz": 5463},
+            {"biz": 73}
+        ]
+    };
+    var find = 'find {foo: == "bar"} ';
+    index.add([doc]).then(resp => {
+        assert.deepEqual(resp, ["example"], "doc created");
+        return index.query(find + 'return .');
+    }).then(resp => {
+        assert.deepEqual(resp, [doc], "return . is correct");
+        return index.query(find + 'return .baz');
+    }).then(resp => {
+        assert.deepEqual(resp, [{"biz": "bar"}], "return .baz is correct");
+        return index.query(find + 'return .baz.biz');
+    }).then(resp => {
+        assert.deepEqual(resp, ["bar"], "return .baz.biz is correct");
+        return index.query(find + 'return .faz[1]');
+    }).then(resp => {
+        assert.deepEqual(resp, [{"biz": 5463}],
+                         "return return .faz[1] is correct");
+        return index.query(find + 'return .faz[1].biz');
+    }).then(resp => {
+        assert.deepEqual(resp, [5463], "return .faz[1].biz is correct");
+        return index.query(find + 'return [.baz, .faz]');
+    }).then(resp => {
+        assert.deepEqual(resp, [[
+            {"biz": "bar"},
+            [{"fiz": 213}, {"biz": 5463}, {"biz": 73}]
+        ]], "return [.baz, .faz] is correct");
+        return index.query(find + 'return {baz: .baz, faz: .faz}');
+    }).then(resp => {
+        assert.deepEqual(resp, [{
+            "baz": {"biz": "bar"},
+            "faz": [{"fiz": 213}, {"biz": 5463}, {"biz": 73}]
+        }], "return {baz: .baz, faz: .faz} is correct");
+        return index.query(find + 'return .hammer default=0');
+    }).then(resp => {
+        assert.deepEqual(resp, [0], "return .hammer default=0 is correct");
+        return index.query(find + 'return {baz: .baz default=0, hammer: .hammer default=1}');
+    }).then(resp => {
+        assert.deepEqual(resp, [{
+            "baz": {"biz": "bar"},
+            "hammer": 1
+        }], "return {baz: .baz default=0, hammer: .hammer default=1} is correct");
+        return index.query(find + 'return .faz[*].biz');
+    }).then(resp => {
+        assert.deepEqual(resp, [[5463, 73]], "return .faz[*].biz is correct");
+        done()
+    }).catch(error => {
+        console.log(error);
+    });
+};
+
+exports['test readme bind variables'] = function(assert, done) {
+    var index = noise.open("readmebind", true);
+    var doc = {
+        _id: "a",
+        foo: [
+            {fiz: "bar", val: 4},
+            {fiz: "baz", val: 7}
+        ],
+        bar: [
+            {fiz: "baz", val: 9}
+        ]
+    };
+    index.add([doc]).then(resp => {
+        assert.deepEqual(resp, ["a"], "doc created");
+        return index.query('find {foo: x::[{fiz: == "bar"}]} return x');
+    }).then(resp => {
+        assert.deepEqual(resp, [[{"fiz": "bar", "val": 4}]],
+                         "return x is correct");
+        return index.query('find {foo: x::[{fiz: == "bar"}]} return x.val');
+    }).then(resp => {
+        assert.deepEqual(resp, [[4]], "return x.val is correct");
+        return index.query(
+            'find {foo: x::[{fiz: == "bar"}], foo: y::[{fiz: == "baz"}]} return [x.val, y.val]');
+    }).then(resp => {
+        assert.deepEqual(resp, [[[4], [7]]],
+                         "return [x.val, y.val] is correct");
+        return index.query(
+            'find {foo: x::[{fiz: == "bar"}], foo: y::[{fiz: == "baz"}]} return {x: x.val, y: y.val}');
+    }).then(resp => {
+        assert.deepEqual(resp, [{"x": [4], "y": [7]}],
+                         "return {x: x.val, y: y.val} is correct");
+        return index.query(
+            'find {foo: x::[{fiz: == "baz"}] || bar: x::[{fiz: == "baz"}]} return {"x": x.val}')
+    }).then(resp => {
+        assert.deepEqual(resp, [{"x": [7, 9]}], "combined bind is correct");
+        done();
+    }).catch(error => {
+        console.log(error);
+    });
+};
+
 if (module == require.main) require('test').run(exports)
