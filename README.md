@@ -517,12 +517,21 @@ return .faz[*].biz
 
 ### Bind Variables: Return Only Matched Array Elements
 
-If you are searching for nested values or objects nested in arrays, and you want to return only the match objects, use the bind syntax before the array in the query.
+If you are searching for nested values or objects nested in arrays, and you want to return only the match objects, use the bind syntax before the array in the query. The bound value is always an array, as multiple elements might match.
 
 Say you have a document like this:
 
 ```
-{"foo":[{"fiz":"bar", "val":4}, {"fiz":"baz", "val":7}]}
+{
+  "_id": "a",
+  "foo": [
+    {"fiz": "bar", "val": 4}, {"fiz": "baz", "val": 7}
+  ],
+  "bar": [
+    {"fiz": "baz", "val": 9}
+  ]
+}
+
 ```
 
 You want to return the object where `{"fiz":"bar",...}` (but not the others), use you a bind variable (`var::[...]`), like this:
@@ -549,11 +558,20 @@ return [x.val, y.val]
 // [[[4], [7]]]
 ```
 
+The same query as the previous one, but returning an object:
+
+```
+find {foo: x::[{fiz: == "bar"}], foo: y::[{fiz: == "baz"}]}
+return {x: x.val, y: y.val}
+// [{"x": [4], "y": [7]}]
+```
+
 You can reuse bind variables in different clauses and they'll be combined:
 
 ```
-find {foo: x::[{fiz: == "bar"}] || faz: x::[{fiz: == "bar"}]}
-return [x.val]
+find {foo: x::[{fiz: == "baz"}] || bar: x::[{fiz: == "baz"}]}
+return {x: x.val}
+// [{"x": [7, 9]}]
 ```
 
 ## Limit Clause
