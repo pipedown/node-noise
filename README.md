@@ -36,7 +36,7 @@ After the index is opened you use `add` method on the index to add documents. Se
 
 You can add a single document, or batch documents into an array. Batching many documents is much faster than adding single documents at a time.
 
-The successful return result is an array of the ids of the array corresponding to the array supplied. If a document can't be inserted for some reason (for example you set `_id` field to a non-string) it has an `{"error": "<reason>}` in its array slot.
+The successful return result is an array of the ids of the array corresponding to the array supplied. If a document can't be inserted for some reason (for example you set `_id` field to a non-string) it has an `{"error": "<reason>"}` in its array slot.
 
 ```javascript
 
@@ -455,7 +455,7 @@ return .faz[1].biz
 
 To return multiple values, embed the return paths in other JSON structures.
 
-For each match this example return 2 values inside an array:
+For each match this example returns 2 values inside an array:
 
 ```
 find {foo: == "bar"}
