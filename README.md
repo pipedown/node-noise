@@ -420,6 +420,16 @@ This will return the whole document for each document found.
 ```
 find {foo: == "bar"}
 return .
+// [{
+//   "_id": "example",
+//   "foo": "bar",
+//   "baz": {"biz": "bar"},
+//   "faz": [
+//     {"fiz": 213},
+//     {"biz": 5463},
+//     {"biz": 73}
+//   ]
+// }]
 ```
 
 To return a specific field, place the field name after the dot:
