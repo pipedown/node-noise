@@ -231,25 +231,25 @@ Noise does not do type conversions of datatypes. Strings only compare with strin
 Let's say you have document like this with text in an array:
 
 ```
-{"foo":["bar", "baz"]}
+{"foo": ["bar", "baz"]}
 ```
 
 To find element with value `"baz"` in the array, use syntax like this:
 
 ```
-find {foo:[ =="baz"]}
+find {foo:[ == "baz"]}
 ```
 
 If objects are nested in array, like this:
 
 ```
-{"foo":[{"fiz":"bar"}, {"fiz":"baz"}]}
+{"foo": [{"fiz": "bar"}, {"fiz": "baz"}]}
 ```
 
-To find a `{"fiz":"baz"}` in the array, use syntax like this:
+To find a `{"fiz": "baz"}` in the array, use syntax like this:
 
 ```
-find {foo:[{fiz: == "baz"}]}
+find {foo: [{fiz: == "baz"}]}
 ```
 
 ### Boolean Logic and Parens
@@ -258,19 +258,19 @@ Noise has full support for boolean logic using `&&` (logical AND) and `||` (logi
 
 The comma `,` in objects is actually the same as the `&&` operator. They can be used interchangeably for which ever is more readable.
 
-Find a doc with `foo` or `bar` in the `body`:
+Find a doc with `"foo"` or `"bar"` in the `body`:
 
 ```
 find {body: ~= "foo" || body: ~= "bar"}
 ```
 
-Find a doc that has `foo` or `bar` and has `baz` or `biz` in the `body`:
+Find a doc that has `"foo"` or `"bar"` and has `"baz"` or `"biz"` in the `body`:
 
 ```
 find {(body: ~= "foo" || body: ~= "bar") && (body: ~= "baz" || body: ~= "biz")}
 ```
 
-The fields can be nested as well. Find a doc where either the nested field `fiz` contains either `baz` or `biz`.
+The fields can be nested as well. Find a doc where either the nested field `fiz` contains either `"baz"` or `"biz"`.
 
 ```
 find {foo: {fiz: ~= "baz" || fiz: ~= "biz"}}
@@ -281,13 +281,13 @@ find {foo: {fiz: ~= "baz" || fiz: ~= "biz"}}
 
 Use the `!` (logical NOT) to exclude matching criteria.
 
-Find docs where `foo` has value `bar` and `fab` does not have value `baz`:
+Find docs where `foo` has value `"bar"` and `fab` does not have value `"baz"`:
 
 ```
 find {foo: == "bar", fab: !== "baz"}
 ```
 
-You can use logical not with parentheses to negate everything enclosed. This example finds docs where `foo` has value `bar` and `fab` does not have value `baz` or `biz`':
+You can use logical not with parentheses to negate everything enclosed. This example finds docs where `foo` has value `"bar"` and `fab` does not have value `"baz"` or `"biz"`':
 
 ```
 find {foo: == "bar", !(fab: == "baz" || fab: == "biz")}
@@ -358,7 +358,7 @@ To return results in a particular order, use the order clause.
 This will order results ascending based on the contents of the `baz` field:
 
 ```
-find {foo: =="bar"}
+find {foo: == "bar"}
 order .baz
 ```
 
@@ -367,28 +367,28 @@ If `baz` doesn't existing, `null` be the value used for ordering.
 This will order `baz` descending:
 
 ```
-find {foo: =="bar"}
+find {foo: == "bar"}
 order .baz
 ```
 
 This will order `baz` ascending:
 
 ```
-find {foo: =="bar"}
+find {foo: == "bar"}
 order .baz asc
 ```
 
 This will order `baz` ascending with default value of `1` if no `baz` value exists:
 
 ```
-find {foo: =="bar"}
+find {foo: == "bar"}
 order .baz asc default=1
 ```
 
 This will order `baz` ascending, for values of `baz` that are the same, those results are now ordered as `biz` ascending.
 
 ```
-find {foo: =="bar"}
+find {foo: == "bar"}
 order .baz asc, .biz dsc
 ```
 
@@ -544,7 +544,7 @@ Say you have a document like this:
 
 ```
 
-You want to return the object where `{"fiz":"bar",...}` (but not the others), use you a bind variable (`var::[...]`), like this:
+You want to return the object where `{"fiz": "bar", ...}` (but not the others), use you a bind variable (`var::[...]`), like this:
 
 ```
 find {foo: x::[{fiz: == "bar"}]}
