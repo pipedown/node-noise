@@ -162,7 +162,7 @@ The JSON inserted into the index must be an object type (`{}`). There is no set 
 
 Documents inserted into the index can include a special `_id` field at the root of the document to identify the document. You can use this field to overwrite and delete previously inserted document. The `_id` field MUST be a text value.
 
-If you do not include an `_id` field, a UUID will be generated and assigned to the `_id` field in the document.
+If you do not include an `_id` field, a [UUID](https://en.wikipedia.org/wiki/Universally_unique_identifier) will be generated and assigned to the `_id` field in the document.
 
 # Query Language
 
