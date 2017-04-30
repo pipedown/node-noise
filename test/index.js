@@ -7,9 +7,11 @@ exports['test basic'] = function(assert, done) {
     index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         assert.deepEqual(resp, ["a","b"], "docs created");
         return index.query('find {foo: =="bar"}')
-    }).then(resp => {
-        assert.deepEqual(resp, ["a"], "doc a found");
-        return index.delete(resp);
+    }).then(iter => {
+        let id = iter.next().value;
+        assert.equal(id, "a", "doc a found");
+        assert.equal(iter.next().done, true, "end");
+        return index.delete(id);
     }).then(resp => {
         assert.deepEqual(resp, [true], "doc a deleted");
         return index.close();
@@ -89,13 +91,15 @@ exports['test multi instances opened'] = function(assert, done) {
         assert.deepEqual(resp, ["a", "b"], "added a and b");
         index2 = noise.open("multiinst", false);
         return index2.query('find {foo: == "bar"}');
-    }).then(resp => {
-        assert.deepEqual(resp, ["a"], "found a on instance 2");
+    }).then(iter => {
+        assert.equal(iter.next().value, "a", "found a on instance 2");
+        assert.equal(iter.next().done, true, "done");
         return index2.close();
     }).then(() => {
         return index1.query('find {foo: == "bar"}')
-    }).then((resp) => {
-        assert.deepEqual(resp, ["a"], "found a on instance 1");
+    }).then(iter => {
+        assert.equal(iter.next().value, "a", "found a on instance 1");
+        assert.equal(iter.next().done, true, "done");
         return index1.close();
     }).then(() => {
         return noise.drop("multiinst");
@@ -124,9 +128,9 @@ exports['test completely empty document'] = function(assert, done) {
         assert.equal(resp.length, 1, "doc created");
         id = resp[0];
         return index.query('find {_id: == "' + id + '"} return .');
-    }).then(resp => {
-        console.log(resp);
-        assert.deepEqual(resp, [{_id: id}], "Empty document is possible");
+    }).then(iter => {
+        assert.deepEqual(iter.next().value, {_id: id}, "Empty document is possible");
+        assert.equal(iter.next().done, true, "done");
         done();
     }).catch(error => {
         console.log(error);
@@ -141,10 +145,10 @@ exports['test document without _id'] = function(assert, done) {
         assert.equal(resp.length, 1, "doc created");
         id = resp[0];
         return index.query('find {_id: == "' + id + '"} return .');
-    }).then(resp => {
-        console.log(resp);
-        assert.deepEqual(resp, [{_id: id, foo: "bar"}],
+    }).then(iter => {
+        assert.deepEqual(iter.next().value, {_id: id, foo: "bar"},
                          "Document without _id is possible");
+        assert.equal(iter.next().done, true, "done");
         done();
     }).catch(error => {
         console.log(error);
@@ -157,10 +161,10 @@ exports['test document with _id only'] = function(assert, done) {
     index.add([doc]).then(resp => {
         assert.deepEqual(resp, ["a"], "doc created");
         return index.query('find {_id: == "a"} return .');
-    }).then(resp => {
-        console.log(resp);
-        assert.deepEqual(resp, [{_id: "a"}],
+    }).then(iter => {
+        assert.deepEqual(iter.next().value, {_id: "a"},
                          "Document with _id only is returned correctly");
+        assert.equal(iter.next().done, true, "done");
         done();
     }).catch(error => {
         console.log(error);

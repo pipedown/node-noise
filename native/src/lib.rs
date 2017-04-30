@@ -202,6 +202,97 @@ fn js_get_response(mut call: Call) -> JsResult<JsValue> {
     }
 }
 
+fn js_get_error(mut call: Call) -> JsResult<JsUndefined> {
+    let conn_id = call.arguments
+        .require(call.scope, 0)?
+        .check::<JsInteger>()?
+        .value() as u64;
+    let res = match MESSAGE_MAP
+              .lock()
+              .unwrap()
+              .deref_mut()
+              .get_mut(&conn_id) {
+        Some(ref mut res) => res.take(),
+        None => return JsError::throw(Kind::Error, "missing response"),
+    };
+    match res.unwrap() {
+        Message::ResponseOk(json) => {
+            //put back
+            *MESSAGE_MAP
+                 .lock()
+                 .unwrap()
+                 .deref_mut()
+                 .get_mut(&conn_id)
+                 .unwrap() = Some(Message::ResponseOk(json));
+            Ok(JsUndefined::new())
+        }
+        Message::ResponseError(msg) => JsError::throw(Kind::Error, &msg),
+        _ => panic!("Non-response message"),
+    }
+}
+
+fn js_query_next(mut call: Call) -> JsResult<JsValue> {
+    let conn_id = call.arguments
+        .require(call.scope, 0)?
+        .check::<JsInteger>()?
+        .value() as u64;
+    let res = match MESSAGE_MAP
+              .lock()
+              .unwrap()
+              .deref_mut()
+              .get_mut(&conn_id) {
+        Some(ref mut res) => res.take(),
+        None => return JsError::throw(Kind::Error, "missing response"),
+    };
+    match res.unwrap() {
+        Message::ResponseOk(JsonValue::Array(mut vec)) => {
+            if let Some(ret) = vec.pop() {
+                let next = convert_json(&mut call, ret);
+                let obj: Handle<JsObject> = JsObject::new(call.scope);
+                let done = JsBoolean::new(call.scope, false).as_value(call.scope);
+                assert!(obj.set("value", next).is_ok());
+                assert!(obj.set("done", done).is_ok());
+                // put the remaining vec back
+                *MESSAGE_MAP
+                     .lock()
+                     .unwrap()
+                     .deref_mut()
+                     .get_mut(&conn_id)
+                     .unwrap() = Some(Message::ResponseOk(JsonValue::Array(vec)));
+
+                Ok(obj.as_value(call.scope))
+            } else {
+                let obj: Handle<JsObject> = JsObject::new(call.scope);
+                let done = JsBoolean::new(call.scope, true).as_value(call.scope);
+                assert!(obj.set("done", done).is_ok());
+                Ok(obj.as_value(call.scope))
+            }
+        }
+        Message::ResponseOk(_json) => panic!("Non-array message"),
+        Message::ResponseError(msg) => JsError::throw(Kind::Error, &msg),
+        _ => panic!("Non-response message"),
+    }
+}
+
+fn js_query_unref(mut call: Call) -> JsResult<JsUndefined> {
+    let conn_id = call.arguments
+        .require(call.scope, 0)?
+        .check::<JsInteger>()?
+        .value() as u64;
+    match MESSAGE_MAP
+              .lock()
+              .unwrap()
+              .deref_mut()
+              .get_mut(&conn_id) {
+        Some(ref mut res) => {
+            let _ = res.take();
+            ()
+        }
+        None => (),
+    }
+    Ok(JsUndefined::new())
+}
+
 fn convert_json<'a>(mut call: &mut Call<'a>, json_in: JsonValue) -> Handle<'a, JsValue> {
     match json_in {
         JsonValue::Number(n) => JsNumber::new(call.scope, n).as_value(call.scope),
@@ -465,7 +556,11 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
         Message::Query(query) => {
             let ref index = index.read().unwrap().index;
             let msg = match Query::get_matches(&query, index) {
-                Ok(results) => Message::ResponseOk(JsonValue::Array(results.collect())),
+                Ok(results) => {
+                    let mut vec: Vec<JsonValue> = results.collect();
+                    vec.reverse(); // reverse so the client iterator can pop vals off end.
+                    Message::ResponseOk(JsonValue::Array(vec))
+                }
                 Err(reason) => Message::ResponseError(reason.description().to_string()),
             };
             msg
@@ -491,5 +586,8 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
 register_module!(m, {
     m.export("startListener", js_start_listener)?;
     m.export("getResponse", js_get_response)?;
-    m.export("sendMessage", js_send_message)
+    m.export("sendMessage", js_send_message)?;
+    m.export("queryNext", js_query_next)?;
+    m.export("getError", js_get_error)?;
+    m.export("queryUnref", js_query_unref)
 });
