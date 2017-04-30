@@ -59,11 +59,11 @@ If you add a document with the same `_id` as a previously added document, the do
 
 ## Querying
 
-To perform a query, use the `.query(...)` on the index object. See the [Query Language](#query-language) section for more information about the query syntax. The return value is always an array of the matching documents. See the [Return Clause](#return-clause) section for more information about the possible return values.
+To perform a query, use the `.query(...)` on the index object, which returns an iterator. Call the `.next()` method on the iterator to iterate though the values. See the [Query Language](#query-language) section for more information about the query syntax. The return value is always an array of the matching documents. See the [Return Clause](#return-clause) section for more information about the possible return values.
 
 ```javascript
-index.query('find {foo: =="bar"}').then(resp => {
-    assert.deepEqual(resp, ["a"], "doc a found");
+index.query('find {foo: =="bar"}').then(iter => {
+    assert.equal(iter.next().value, "a", "doc a found");
 }
 ```
 
@@ -115,9 +115,10 @@ var index = noise.open("myindex", true);
 index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
     assert.deepEqual(resp, ["a","b"], "docs created");
     return index.query('find {foo: =="bar"}')
-}).then(resp => {
-    assert.deepEqual(resp, ["a"], "doc a found");
-    return index.delete(resp);
+}).then(iter => {
+    let id = iter.next().value;
+    assert.equal(id, "a", "doc a found");
+    return index.delete(id);
 }).then(resp => {
     assert.deepEqual(resp, [true], "doc a deleted");
     return index.close();
