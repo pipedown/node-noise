@@ -26,6 +26,23 @@ exports['test basic'] = function(assert, done) {
     });
 }
 
+exports['test iterable'] = function(assert, done) {
+    var index = noise.open("iterabletesttest", true);
+    index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
+        assert.deepEqual(resp, ["a","b"], "docs created");
+        return index.query('find {foo: =="bar" || foo: =="baz"}')
+    }).then(iter => {
+        let ids = [];
+        for (let value of iter) {
+            ids.push(value);
+        }
+        assert.deepEqual(ids, ["a", "b"], "doc a and b found");
+        done();
+    }).catch(error => {
+        console.log(error);
+    });
+}
+
 exports['test bad open'] = function(assert, done) {
     var index = noise.open("", true);
     index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
