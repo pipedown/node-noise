@@ -67,6 +67,16 @@ index.query('find {foo: =="bar"}').then(iter => {
 }
 ```
 
+The iterator is also a iterable, so you can use it in a `for ... of` loop:
+
+```javascript
+index.query('find {foo: =="bar"}').then(iter => {
+    for (let value of iter) {
+        console.log(value);
+    }
+}
+```
+
 ## Deleting Documents
 
 You can delete documents by passing in an array of `_id`s of the documents to the `.delete(...)` method. It returns an array of booleans where each elements indicates whether the deletion of the individual document was successful or not.
