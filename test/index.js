@@ -190,13 +190,19 @@ exports['test document with _id only'] = function(assert, done) {
 
 exports['test empty result'] = function(assert, done) {
     var index = noise.open("emptyresulttest", true);
-    index.query('find {_cannotbefound: ==true}').then(resp => {
-        const foo = (function*() {
-        })();
-        console.log('show what the return value of an empty iterator is:', foo.next());
-        console.log('show what the return value of an empty iterator is when calling `next()` repeatedly:', foo.next());
-        console.log('show what noise returns on an empty result', resp.next());
-        console.log('show what noise returns on an empty result when calling `next()` repeatedly:', resp.next());
+    index.query('find {_cannotbefound: ==true}').then(iter => {
+        assert.equal(iter.next().value,
+                     undefined,
+                     "First `next()` call: .value is `undefined`");
+        assert.equal(iter.next().done,
+                     true,
+                     "First `next()` call: .done is `true`");
+        assert.equal(iter.next().value,
+                     undefined,
+                     "Second `next()` call: .value is `undefined`");
+        assert.equal(iter.next().done,
+                     true,
+                     "Second `next()` call: .done is `true`");
         done();
     }).catch(error => {
         console.log(error);
