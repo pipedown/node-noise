@@ -188,6 +188,21 @@ exports['test document with _id only'] = function(assert, done) {
     });
 };
 
+exports['test empty result'] = function(assert, done) {
+    var index = noise.open("emptyresulttest", true);
+    index.query('find {_cannotbefound: ==true}').then(resp => {
+        const foo = (function*() {
+        })();
+        console.log('show what the return value of an empty iterator is:', foo.next());
+        console.log('show what the return value of an empty iterator is when calling `next()` repeatedly:', foo.next());
+        console.log('show what noise returns on an empty result', resp.next());
+        console.log('show what noise returns on an empty result when calling `next()` repeatedly:', resp.next());
+        done();
+    }).catch(error => {
+        console.log(error);
+    });
+}
+
 exports['test readme returns'] = function(assert, done) {
     var index = noise.open("readmereturns", true);
     var doc = {
