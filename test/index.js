@@ -219,45 +219,57 @@ exports['test readme returns'] = function(assert, done) {
     index.add([doc]).then(resp => {
         assert.deepEqual(resp, ["example"], "doc created");
         return index.query(find + 'return .');
-    }).then(resp => {
-        assert.deepEqual(resp, [doc], "return . is correct");
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter), [doc], "return . is correct");
         return index.query(find + 'return .baz');
-    }).then(resp => {
-        assert.deepEqual(resp, [{"biz": "bar"}], "return .baz is correct");
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [{"biz": "bar"}],
+                         "return .baz is correct");
         return index.query(find + 'return .baz.biz');
-    }).then(resp => {
-        assert.deepEqual(resp, ["bar"], "return .baz.biz is correct");
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         ["bar"],
+                         "return .baz.biz is correct");
         return index.query(find + 'return .faz[1]');
-    }).then(resp => {
-        assert.deepEqual(resp, [{"biz": 5463}],
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [{"biz": 5463}],
                          "return return .faz[1] is correct");
         return index.query(find + 'return .faz[1].biz');
-    }).then(resp => {
-        assert.deepEqual(resp, [5463], "return .faz[1].biz is correct");
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [5463],
+                         "return .faz[1].biz is correct");
         return index.query(find + 'return [.baz, .faz]');
-    }).then(resp => {
-        assert.deepEqual(resp, [[
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter), [[
             {"biz": "bar"},
             [{"fiz": 213}, {"biz": 5463}, {"biz": 73}]
         ]], "return [.baz, .faz] is correct");
         return index.query(find + 'return {baz: .baz, faz: .faz}');
-    }).then(resp => {
-        assert.deepEqual(resp, [{
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter), [{
             "baz": {"biz": "bar"},
             "faz": [{"fiz": 213}, {"biz": 5463}, {"biz": 73}]
         }], "return {baz: .baz, faz: .faz} is correct");
         return index.query(find + 'return .hammer default=0');
-    }).then(resp => {
-        assert.deepEqual(resp, [0], "return .hammer default=0 is correct");
-        return index.query(find + 'return {baz: .baz default=0, hammer: .hammer default=1}');
-    }).then(resp => {
-        assert.deepEqual(resp, [{
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [0],
+                         "return .hammer default=0 is correct");
+        return index.query(
+            find + 'return {baz: .baz default=0, hammer: .hammer default=1}');
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter), [{
             "baz": {"biz": "bar"},
             "hammer": 1
         }], "return {baz: .baz default=0, hammer: .hammer default=1} is correct");
         return index.query(find + 'return .faz[*].biz');
-    }).then(resp => {
-        assert.deepEqual(resp, [[5463, 73]], "return .faz[*].biz is correct");
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [[5463, 73]],
+                         "return .faz[*].biz is correct");
         done()
     }).catch(error => {
         console.log(error);
@@ -276,29 +288,34 @@ exports['test readme bind variables'] = function(assert, done) {
             {fiz: "baz", val: 9}
         ]
     };
-    index.add([doc]).then(resp => {
-        assert.deepEqual(resp, ["a"], "doc created");
+    index.add([doc]).then(iter => {
+        assert.deepEqual(Array.from(iter), ["a"], "doc created");
         return index.query('find {foo: x::[{fiz: == "bar"}]} return x');
-    }).then(resp => {
-        assert.deepEqual(resp, [[{"fiz": "bar", "val": 4}]],
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [[{"fiz": "bar", "val": 4}]],
                          "return x is correct");
         return index.query('find {foo: x::[{fiz: == "bar"}]} return x.val');
-    }).then(resp => {
-        assert.deepEqual(resp, [[4]], "return x.val is correct");
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter), [[4]], "return x.val is correct");
         return index.query(
             'find {foo: x::[{fiz: == "bar"}], foo: y::[{fiz: == "baz"}]} return [x.val, y.val]');
-    }).then(resp => {
-        assert.deepEqual(resp, [[[4], [7]]],
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [[[4], [7]]],
                          "return [x.val, y.val] is correct");
         return index.query(
             'find {foo: x::[{fiz: == "bar"}], foo: y::[{fiz: == "baz"}]} return {x: x.val, y: y.val}');
-    }).then(resp => {
-        assert.deepEqual(resp, [{"x": [4], "y": [7]}],
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [{"x": [4], "y": [7]}],
                          "return {x: x.val, y: y.val} is correct");
         return index.query(
             'find {foo: x::[{fiz: == "baz"}] || bar: x::[{fiz: == "baz"}]} return {"x": x.val}')
-    }).then(resp => {
-        assert.deepEqual(resp, [{"x": [7, 9]}], "combined bind is correct");
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         [{"x": [7, 9]}],
+                         "combined bind is correct");
         done();
     }).catch(error => {
         console.log(error);
