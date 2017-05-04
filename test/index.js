@@ -3,7 +3,7 @@ var noise = require('../lib/noise.js');
 // if test function expects second named argument it will be executed 
 // in async mode and test will be complete only after callback is called 
 exports['test basic'] = function(assert, done) {
-    var index = noise.open("firstrealtest", true);
+    var index = noise.open("tmp/firstrealtest", true);
     index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         assert.deepEqual(resp, ["a","b"], "docs created");
         return index.query('find {foo: =="bar"}')
@@ -17,7 +17,7 @@ exports['test basic'] = function(assert, done) {
         return index.close();
     }).then(() => {
         assert.ok(true, "index closed");
-        return noise.drop("firstrealtest");
+        return noise.drop("tmp/firstrealtest");
     }).then(() => {
         assert.ok(true, "index dropped");
         done();
@@ -27,7 +27,7 @@ exports['test basic'] = function(assert, done) {
 }
 
 exports['test iterable'] = function(assert, done) {
-    var index = noise.open("iterabletesttest", true);
+    var index = noise.open("tmp/iterabletesttest", true);
     index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         assert.deepEqual(resp, ["a","b"], "docs created");
         return index.query('find {foo: =="bar" || foo: =="baz"}')
@@ -55,14 +55,14 @@ exports['test bad open'] = function(assert, done) {
 }
 
 exports['test bad query'] = function(assert, done) {
-    var index = noise.open("badquery", true);
+    var index = noise.open("tmp/badquery", true);
     index.query('find {foo: =="bar"').then(resp => {
         console.log(resp);
         assert.ok(false, "this should have failed");
     }).catch(error => {
         assert.ok(true, "expected: " + error);
         index.close().then(() => {
-            return noise.drop("badquery");
+            return noise.drop("tmp/badquery");
         }).then(() => {
             done();
         }).catch(error => {
@@ -72,7 +72,7 @@ exports['test bad query'] = function(assert, done) {
 }
 
 exports['test multi concurrent add'] = function(assert, done) {
-    var index = noise.open("multiadd", true);
+    var index = noise.open("tmp/multiadd", true);
     index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         assert.deepEqual(resp, ["a", "b"], "added a and b");
     }).catch(error => {
@@ -82,17 +82,17 @@ exports['test multi concurrent add'] = function(assert, done) {
         assert.deepEqual(resp, ["c", "d"], "added c and d");
         return index.close();
     }).then(() => {
-        return noise.drop("multiadd");
+        return noise.drop("tmp/multiadd");
     }).then(() => {
         // make sure deleted
-        var index = noise.open("multiadd", false);
+        var index = noise.open("tmp/multiadd", false);
         index.add({foo:"bar"}).then(() => {
             assert.ok(false, "add should have failed");
         }).catch(err => {
             assert.ok(true, "dropped index didn't reopen");
             // for some damn reason attempting to open an non-existant
             // index creates the dir and a LOG and LOCK file. clean it up here.
-            noise.drop("multiadd").then(() => {
+            noise.drop("tmp/multiadd").then(() => {
                 done();
             });
         });
@@ -102,33 +102,33 @@ exports['test multi concurrent add'] = function(assert, done) {
 };
 
 exports['test multi instances opened'] = function(assert, done) {
-    var index1 = noise.open("multiinst", true);
+    var index1 = noise.open("tmp/multiinst", true);
     var index2;
     index1.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         assert.deepEqual(resp, ["a", "b"], "added a and b");
-        index2 = noise.open("multiinst", false);
+        index2 = noise.open("tmp/multiinst", false);
         return index2.query('find {foo: == "bar"}');
     }).then(iter => {
         assert.equal(iter.next().value, "a", "found a on instance 2");
         assert.equal(iter.next().done, true, "done");
         return index2.close();
     }).then(() => {
-        return index1.query('find {foo: == "bar"}')
+        return index1.query('find {foo: == "bar"}');
     }).then(iter => {
         assert.equal(iter.next().value, "a", "found a on instance 1");
         assert.equal(iter.next().done, true, "done");
         return index1.close();
     }).then(() => {
-        return noise.drop("multiinst");
+        return noise.drop("tmp/multiinst");
     }).then(() => {
-        var index = noise.open("multiinst", false);
+        var index = noise.open("tmp/multiinst", false);
         index.add({foo:'bar'}).then(resp => {
             assert.ok(false, "shouldn't happen");
         }).catch(err => {
             assert.ok(true, "dropped index didn't reopen");
             // for some damn reason attempting to open an non-existant
             // index creates the dir and a LOG and LOCK file. clean it up here.
-            noise.drop("multiinst").then(() => {
+            noise.drop("tmp/multiinst").then(() => {
                 done();
             });
         });
@@ -138,7 +138,7 @@ exports['test multi instances opened'] = function(assert, done) {
 };
 
 exports['test completely empty document'] = function(assert, done) {
-    var index = noise.open("emptydocument", true);
+    var index = noise.open("tmp/emptydocument", true);
     var doc = {};
     var id;
     index.add([doc]).then(resp => {
@@ -155,7 +155,7 @@ exports['test completely empty document'] = function(assert, done) {
 };
 
 exports['test document without _id'] = function(assert, done) {
-    var index = noise.open("withoutid", true);
+    var index = noise.open("tmp/withoutid", true);
     var doc = {foo: 'bar'};
     var id;
     index.add([doc]).then(resp => {
@@ -173,7 +173,7 @@ exports['test document without _id'] = function(assert, done) {
 };
 
 exports['test document with _id only'] = function(assert, done) {
-    var index = noise.open("idonly", true);
+    var index = noise.open("tmp/idonly", true);
     var doc = {_id: "a"};
     index.add([doc]).then(resp => {
         assert.deepEqual(resp, ["a"], "doc created");
@@ -189,7 +189,7 @@ exports['test document with _id only'] = function(assert, done) {
 };
 
 exports['test empty result'] = function(assert, done) {
-    var index = noise.open("emptyresulttest", true);
+    var index = noise.open("tmp/emptyresulttest", true);
     index.query('find {_cannotbefound: ==true}').then(iter => {
         assert.equal(iter.next().value,
                      undefined,
@@ -210,7 +210,7 @@ exports['test empty result'] = function(assert, done) {
 }
 
 exports['test readme returns'] = function(assert, done) {
-    var index = noise.open("readmereturns", true);
+    var index = noise.open("tmp/readmereturns", true);
     var doc = {
         "_id": "example",
         "foo": "bar",
@@ -283,7 +283,7 @@ exports['test readme returns'] = function(assert, done) {
 };
 
 exports['test readme bind variables'] = function(assert, done) {
-    var index = noise.open("readmebind", true);
+    var index = noise.open("tmp/readmebind", true);
     var doc = {
         _id: "a",
         foo: [
