@@ -178,6 +178,12 @@ This query will return the `_id` of every document with a `{"foo": "bar",...}`
 find {foo: == "bar"}
 ```
 
+This query will match all documents in the index and return their `_id`.
+
+```
+find {}
+```
+
 To match on multiple fields, or even nested fields, simply construct the same json structure in query form.
 
 Match on two fields:
@@ -513,15 +519,15 @@ return {baz: .baz default=0, hammer: .hammer default=1}
 
 
 
-### Array Star (*) Syntax
+### Return a Field from All Objects Inside an Array
 
-If want to return a nested field inside an array, but for each object in the array, use the `*` operator.
+If want to return a nested field inside an array, but for each object in the array, use the `[]` with no index.
 
 This will return each biz field as an array of values:
 
 ```
 find {foo: == "bar"}
-return .faz[*].biz
+return .faz[].biz
 // [[5463, 73]]
 ```
 
