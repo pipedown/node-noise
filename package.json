@@ -17,6 +17,7 @@
   },
   "scripts": {
     "install": "neon build",
+    "pretest": "rm -rf tmp/",
     "test": "node test/index.js"
   }
 }
