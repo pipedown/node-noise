@@ -15,8 +15,7 @@ You'll need to install the [Rust Compiler](https://www.rust-lang.org/en-US/insta
 
 The Noise query language is an expressive example-based syntax for finding documents, formatting and returning specific information in the documents, performing relevancy scoring, ordering and aggregations.
 
-The language reference is here:
-[https://github.com/pipedown/noise/wiki/Noise-Query-Language](https://github.com/pipedown/noise/wiki/Noise-Query-Language)
+[The query language reference is here.](https://github.com/pipedown/noise/blob/master/query_language_reference.md)
 
 
 # Javascript API
