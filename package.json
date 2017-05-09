@@ -1,6 +1,6 @@
 {
   "name": "noise-search",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Noise for Node.js",
   "main": "lib/noise.js",
   "author": "Damien Katz <me@damienkatz.com>",
