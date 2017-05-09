@@ -83,6 +83,18 @@ index.query('find {foo: =="bar"}').then(iter => {
 }
 ```
 
+If you want to not iterate through all results, you must call the `.unref()` method on ther iterator. Otherwise the index instance may hang on subsequent queries.
+
+```javascript
+index.query('find {foo: =="bar"}').then(iter => {
+    let first = iter.next();
+    if (!first.done) {
+        console.log(value);
+    }
+    iter.unref();
+}
+```
+
 ## Deleting Documents
 
 You can delete documents by passing in an array of `_id`s of the documents to the `.delete(...)` method. It returns an array of booleans where each elements indicates whether the deletion of the individual document was successful or not.

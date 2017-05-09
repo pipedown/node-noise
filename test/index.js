@@ -271,11 +271,11 @@ exports['test readme returns'] = function(assert, done) {
             "baz": {"biz": "bar"},
             "hammer": 1
         }], "return {baz: .baz default=0, hammer: .hammer default=1} is correct");
-        return index.query(find + 'return .faz[*].biz');
+        return index.query(find + 'return .faz[].biz');
     }).then(iter => {
         assert.deepEqual(Array.from(iter),
                          [[5463, 73]],
-                         "return .faz[*].biz is correct");
+                         "return .faz[].biz is correct");
         done()
     }).catch(error => {
         console.log(error);
@@ -325,6 +325,26 @@ exports['test readme bind variables'] = function(assert, done) {
         done();
     }).catch(error => {
         console.log(error);
+    });
+};
+
+exports['test iter unref'] = function(assert, done) {
+    var index = noise.open("tmp/iter_unref", true);
+    index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
+        assert.equal(resp.length, 2, "docs created");
+        return index.query('find {} return .');
+    }).then(iter => {
+        assert.equal(iter.next().done, false, "first doc");
+        iter.unref();
+        return index.query('find {} return .');
+    }).then(iter => {
+        assert.equal(iter.next().done, false, "first doc");
+        assert.equal(iter.next().done, false, "second doc");
+        assert.equal(iter.next().done, true, "done");
+        done();
+    }).catch(error => {
+        console.log(error);
+        assert.ok(false, "should be no error");
     });
 };
 
