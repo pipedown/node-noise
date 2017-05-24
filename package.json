@@ -4,7 +4,12 @@
   "description": "Noise for Node.js",
   "main": "lib/noise.js",
   "author": "Damien Katz <me@damienkatz.com>",
+  "homepage": "http://noisesearch.org",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pipedown/node-noise"
+  }
   "dependencies": {
     "async": "^2.2.0",
     "neon-cli": "0.1.13",
