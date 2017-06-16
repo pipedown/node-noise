@@ -95,6 +95,28 @@ index.query('find {foo: =="bar"}').then(iter => {
 }
 ```
 
+You can also use parameterized queries, to avoid the problems of improperly escaping strings when building queries from untrusted sources.
+
+```javascript
+let userInput = form.getUserInput();
+// oops the next line is susceptible to malicious input! 
+index.query('find {foo: =="' + userInput + '"}').then(iter => {
+    assert.equal(iter.next().value, "a", "doc a found");
+}
+```
+
+Indicate parameters with `@paramName` inside the query. Then pass in a object with the same `paramName` and the unescaped value in second argument.
+
+```javascript
+let userInput = form.getUserInput();
+// no way for malicious input to affect us!
+index.query('find {foo: == @userInput}', {userInput: userInput}).then(iter => {
+    assert.equal(iter.next().value, "a", "doc a found");
+}
+```
+
+You can use any number of parameters. A @parameter can be repeated in the query for multiple fields. If a @parameter in the query isn't in the parameter object, it's an error.
+
 ## Deleting Documents
 
 You can delete documents by passing in an array of `_id`s of the documents to the `.delete(...)` method. It returns an array of booleans where each elements indicates whether the deletion of the individual document was successful or not.

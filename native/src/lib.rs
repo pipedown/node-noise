@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::vec::Vec;
 use std::ops::DerefMut;
 use std::fs;
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, Mutex};
 use std::ops::Deref;
 use std::mem::drop;
 
@@ -27,8 +27,7 @@ use neon::js::{JsString, JsNumber, JsBoolean, JsNull, JsArray, JsObject, JsUndef
 use neon::js::error::{JsError, Kind};
 use neon::mem::Handle;
 
-use noise_search::index::{Index, OpenOptions, Batch};
-use noise_search::query::Query;
+use noise_search::index::{Index, OpenOptions, Batch, MvccRwLock};
 use noise_search::json_value::JsonValue;
 
 enum Message {
@@ -36,7 +35,7 @@ enum Message {
     DropIndex(String),
     Add(Vec<String>),
     Delete(Vec<String>),
-    Query(String),
+    Query(String, Option<String>),
     Close,
     ResponseOk(JsonValue),
     ResponseError(String),
@@ -55,7 +54,7 @@ struct OpenedIndex {
 }
 
 struct OpenedIndexCleanupGuard {
-    index: Arc<RwLock<OpenedIndex>>,
+    index: Arc<MvccRwLock<OpenedIndex>>,
 }
 
 impl Drop for OpenedIndexCleanupGuard {
@@ -83,22 +82,22 @@ impl Drop for OpenedIndexCleanupGuard {
 }
 
 impl Deref for OpenedIndexCleanupGuard {
-    type Target = Arc<RwLock<OpenedIndex>>;
+    type Target = Arc<MvccRwLock<OpenedIndex>>;
 
-    fn deref(&self) -> &Arc<RwLock<OpenedIndex>> {
+    fn deref(&self) -> &Arc<MvccRwLock<OpenedIndex>> {
         &self.index
     }
 }
 
 impl DerefMut for OpenedIndexCleanupGuard {
-    fn deref_mut(&mut self) -> &mut Arc<RwLock<OpenedIndex>> {
+    fn deref_mut(&mut self) -> &mut Arc<MvccRwLock<OpenedIndex>> {
         &mut self.index
     }
 }
 
 // This lock only allows one index to be updated at a time.
 lazy_static! {
-    static ref OPEN_INSTANCES: Mutex<HashMap<String, Arc<RwLock<OpenedIndex>>>> = Mutex::new(HashMap::new());
+    static ref OPEN_INSTANCES: Mutex<HashMap<String, Arc<MvccRwLock<OpenedIndex>>>> = Mutex::new(HashMap::new());
 }
 
 fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
@@ -165,7 +164,12 @@ fn js_send_message(call: Call) -> JsResult<JsUndefined> {
         }
         4 => {
             // query
-            Message::Query(vec[0].check::<JsString>()?.value())
+            let params = if vec.len() == 2 {
+                Some(vec[1].check::<JsString>()?.value())
+            } else {
+                None
+            };
+            Message::Query(vec[0].check::<JsString>()?.value(), params)
         }
         5 => Message::Close,
         _ => {
@@ -353,25 +357,27 @@ fn handle_client_outer(stream: UnixStream) {
             };
             match msg {
                 Message::OpenIndex(name, options) => {
-                    let mut index = Arc::new(RwLock::new(OpenedIndex {
-                                                             index: Index::new(),
-                                                             open_count: 1,
-                                                         }));
+                    let mut index: Option<Arc<MvccRwLock<OpenedIndex>>> = None;
                     let resp = {
                         let mut guard = OPEN_INSTANCES.lock().unwrap();
                         let mut map = guard.deref_mut();
                         let needs_opening = match map.get_mut(&name) {
                             None => true,
                             Some(opened_index) => {
-                                index = opened_index.clone();
+                                index = Some(opened_index.clone());
                                 opened_index.write().unwrap().open_count += 1;
                                 false
                             }
                         };
                         if needs_opening {
-                            match index.write().unwrap().index.open(&name, options) {
-                                Ok(()) => {
-                                    map.insert(name.clone(), index.clone());
+                            match Index::open(&name, options) {
+                                Ok(new_index) => {
+                                    let new_index = Arc::new(MvccRwLock::new(OpenedIndex {
+                                                                                 index: new_index,
+                                                                                 open_count: 1,
+                                                                             }));
+                                    map.insert(name.clone(), new_index.clone());
+                                    index = Some(new_index);
                                     Message::ResponseOk(JsonValue::True)
                                 }
                                 Err(msg) => Message::ResponseError(msg.description().to_string()),
@@ -396,14 +402,17 @@ fn handle_client_outer(stream: UnixStream) {
                         writer.write_all(&[b'1']).unwrap();
                         writer.flush().unwrap();
                     }
-                    let index_guard = OpenedIndexCleanupGuard { index: index };
-                    // now start servicing instance requests
-                    let result =
-                        panic::catch_unwind(|| {
-                                                handle_client(index_guard, reader, connection_id);
-                                            });
-                    if result.is_err() {
-                        println!("panic happend!")
+                    if index.is_some() {
+                        let index_guard = OpenedIndexCleanupGuard { index: index.unwrap() };
+                        // now start servicing instance requests
+                        let result = panic::catch_unwind(|| {
+                                                             handle_client(index_guard,
+                                                                           reader,
+                                                                           connection_id);
+                                                         });
+                        if result.is_err() {
+                            println!("panic happend!")
+                        }
                     }
                     {
                         // clean up message slot
@@ -553,9 +562,9 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
                 Err(reason) => Message::ResponseError(reason.description().to_string()),
             }
         }
-        Message::Query(query) => {
-            let ref index = index.read().unwrap().index;
-            let msg = match Query::get_matches(&query, index) {
+        Message::Query(query, params) => {
+            let ref index = index.read().index;
+            let msg = match index.query(&query, params) {
                 Ok(results) => {
                     let mut vec: Vec<JsonValue> = results.collect();
                     vec.reverse(); // reverse so the client iterator can pop vals off end.

@@ -30,7 +30,24 @@ exports['test iterable'] = function(assert, done) {
     var index = noise.open("tmp/iterabletesttest", true);
     index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
         assert.deepEqual(resp, ["a","b"], "docs created");
-        return index.query('find {foo: =="bar" || foo: =="baz"}')
+        return index.query('find {foo: =="bar" || foo: =="baz"}');
+    }).then(iter => {
+        let ids = [];
+        for (let value of iter) {
+            ids.push(value);
+        }
+        assert.deepEqual(ids, ["a", "b"], "doc a and b found");
+        done();
+    }).catch(error => {
+        console.log(error);
+    });
+}
+
+exports['test params'] = function(assert, done) {
+    var index = noise.open("tmp/paramstest", true);
+    index.add([{_id:"a",foo:"bar"}, {_id:"b", foo:"baz"}]).then(resp => {
+        assert.deepEqual(resp, ["a","b"], "docs created");
+        return index.query('find {foo: ==@f1 || foo: ==@f2}', {f1:"bar", f2:"baz"});
     }).then(iter => {
         let ids = [];
         for (let value of iter) {
@@ -347,5 +364,7 @@ exports['test iter unref'] = function(assert, done) {
         assert.ok(false, "should be no error");
     });
 };
+
+
 
 if (module == require.main) require('test').run(exports)
