@@ -23,7 +23,7 @@ use unix_socket::{UnixStream, UnixListener};
 
 use neon::vm::{Call, JsResult};
 use neon::js::{JsString, JsNumber, JsBoolean, JsNull, JsArray, JsObject, JsUndefined, Object,
-               Value, JsValue, JsInteger};
+               Value, JsValue};
 use neon::js::error::{JsError, Kind};
 use neon::mem::Handle;
 
@@ -126,16 +126,16 @@ fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
 
 fn js_send_message(call: Call) -> JsResult<JsUndefined> {
     let scope = call.scope;
-    let conn_id: Handle<JsInteger> = call.arguments
+    let conn_id: Handle<JsNumber> = call.arguments
         .require(scope, 0)?
-        .check::<JsInteger>()?;
-    let msg_type: Handle<JsInteger> = call.arguments
+        .check::<JsNumber>()?;
+    let msg_type: Handle<JsNumber> = call.arguments
         .require(scope, 1)?
-        .check::<JsInteger>()?;
+        .check::<JsNumber>()?;
     let args: Handle<JsArray> = call.arguments.require(scope, 2)?.check::<JsArray>()?;
 
     let vec = args.to_vec(scope)?;
-    let message = match msg_type.value() {
+    let message = match msg_type.value() as u64 {
         0 => {
             // open index
             let name = vec[0].check::<JsString>()?.value();
@@ -189,7 +189,7 @@ fn js_send_message(call: Call) -> JsResult<JsUndefined> {
 fn js_get_response(mut call: Call) -> JsResult<JsValue> {
     let conn_id = call.arguments
         .require(call.scope, 0)?
-        .check::<JsInteger>()?
+        .check::<JsNumber>()?
         .value() as u64;
     let res = match MESSAGE_MAP
               .lock()
@@ -209,7 +209,7 @@ fn js_get_response(mut call: Call) -> JsResult<JsValue> {
 fn js_get_error(mut call: Call) -> JsResult<JsUndefined> {
     let conn_id = call.arguments
         .require(call.scope, 0)?
-        .check::<JsInteger>()?
+        .check::<JsNumber>()?
         .value() as u64;
     let res = match MESSAGE_MAP
               .lock()
@@ -238,7 +238,7 @@ fn js_get_error(mut call: Call) -> JsResult<JsUndefined> {
 fn js_query_next(mut call: Call) -> JsResult<JsValue> {
     let conn_id = call.arguments
         .require(call.scope, 0)?
-        .check::<JsInteger>()?
+        .check::<JsNumber>()?
         .value() as u64;
     let res = match MESSAGE_MAP
               .lock()
@@ -281,7 +281,7 @@ fn js_query_next(mut call: Call) -> JsResult<JsValue> {
 fn js_query_unref(mut call: Call) -> JsResult<JsUndefined> {
     let conn_id = call.arguments
         .require(call.scope, 0)?
-        .check::<JsInteger>()?
+        .check::<JsNumber>()?
         .value() as u64;
     match MESSAGE_MAP
               .lock()
