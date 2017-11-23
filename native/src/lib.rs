@@ -206,7 +206,7 @@ fn js_get_response(mut call: Call) -> JsResult<JsValue> {
     }
 }
 
-fn js_get_error(mut call: Call) -> JsResult<JsUndefined> {
+fn js_get_error(call: Call) -> JsResult<JsUndefined> {
     let conn_id = call.arguments
         .require(call.scope, 0)?
         .check::<JsNumber>()?
@@ -278,7 +278,7 @@ fn js_query_next(mut call: Call) -> JsResult<JsValue> {
     }
 }
 
-fn js_query_unref(mut call: Call) -> JsResult<JsUndefined> {
+fn js_query_unref(call: Call) -> JsResult<JsUndefined> {
     let conn_id = call.arguments
         .require(call.scope, 0)?
         .check::<JsNumber>()?
@@ -297,7 +297,7 @@ fn js_query_unref(mut call: Call) -> JsResult<JsUndefined> {
     Ok(JsUndefined::new())
 }
 
-fn convert_json<'a>(mut call: &mut Call<'a>, json_in: JsonValue) -> Handle<'a, JsValue> {
+fn convert_json<'a>(call: &mut Call<'a>, json_in: JsonValue) -> Handle<'a, JsValue> {
     match json_in {
         JsonValue::Number(n) => JsNumber::new(call.scope, n).as_value(call.scope),
         JsonValue::String(s) => {
@@ -360,7 +360,7 @@ fn handle_client_outer(stream: UnixStream) {
                     let mut index: Option<Arc<MvccRwLock<OpenedIndex>>> = None;
                     let resp = {
                         let mut guard = OPEN_INSTANCES.lock().unwrap();
-                        let mut map = guard.deref_mut();
+                        let map = guard.deref_mut();
                         let needs_opening = match map.get_mut(&name) {
                             None => true,
                             Some(opened_index) => {
@@ -398,7 +398,7 @@ fn handle_client_outer(stream: UnixStream) {
 
                     {
                         // notify the client the response is ready
-                        let mut writer = reader.get_mut();
+                        let writer = reader.get_mut();
                         writer.write_all(&[b'1']).unwrap();
                         writer.flush().unwrap();
                     }
@@ -445,7 +445,7 @@ fn handle_client_outer(stream: UnixStream) {
                     }
                     {
                         // notify the client the response is ready
-                        let mut writer = reader.get_mut();
+                        let writer = reader.get_mut();
                         writer.write_all(&[b'1']).unwrap();
                         writer.flush().unwrap();
                     }
@@ -510,7 +510,7 @@ fn handle_client(mut index: OpenedIndexCleanupGuard,
                 }
 
                 // notify the client the response is ready
-                let mut writer = reader.get_mut();
+                let writer = reader.get_mut();
                 writer.write_all(&[b'1']).unwrap();
                 writer.flush().unwrap();
 
