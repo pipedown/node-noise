@@ -365,6 +365,28 @@ exports['test iter unref'] = function(assert, done) {
     });
 };
 
+exports['test geojson'] = function(assert, done) {
+    var index = noise.open("tmp/geojson", true);
+    index.add([{_id:"point","geometry":{"type":"Point","coordinates":[10.9,48.4]}},
+      {"_id":"linestring","geometry":{"type":"LineString","coordinates":[[102.0,0.0],[103.0,1.0],[104.0,0.0],[105.0,1.0]]}}
+    ]).then(resp => {
+        assert.equal(resp.length, 2, "docs created");
+        return index.query('find {geometry: && [-180, -90, 180, 90]} return ._id');
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         ["point", "linestring"],
+                         "querying the whole world is correct");
+        return index.query('find {geometry: && [0, 0, 50, 50]} return ._id');
+    }).then(iter => {
+        assert.deepEqual(Array.from(iter),
+                         ["point"],
+                         "querying a subset works");
+        done();
+    }).catch(error => {
+        console.log(error);
+        assert.ok(false, "should be no error");
+    });
+};
 
 
 if (module == require.main) require('test').run(exports)
