@@ -405,14 +405,7 @@ fn handle_client_outer(stream: UnixStream) {
                     if index.is_some() {
                         let index_guard = OpenedIndexCleanupGuard { index: index.unwrap() };
                         // now start servicing instance requests
-                        let result = panic::catch_unwind(|| {
-                                                             handle_client(index_guard,
-                                                                           reader,
-                                                                           connection_id);
-                                                         });
-                        if result.is_err() {
-                            println!("panic happend!")
-                        }
+                        handle_client(index_guard, reader, connection_id);
                     }
                     {
                         // clean up message slot
@@ -496,8 +489,27 @@ fn handle_client(mut index: OpenedIndexCleanupGuard,
                     drop(index); // make sure index instance is closed first
                     return; // now we end the loop. The client will notice the socket close.
                 }
-                // process the message
-                let response = process_message(&mut index, msg);
+                // NOTE vmx 2017-12-05: I'm not really sure if passing on the `&mut index`
+                // is really safe. But it seems to work.
+                let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                    // process the message
+                    process_message(&mut index, msg)
+                }));
+
+                let response = match result {
+                    Ok(resp) => resp,
+                    Err(panic) =>  {
+                        let msg = match panic.downcast::<String>() {
+                            Ok(panic_msg) => {
+                                format!("panic happened: {}", panic_msg)
+                            },
+                            Err(_) => {
+                                "panic happened: unknown cause.".to_string()
+                            },
+                        };
+                        Message::ResponseError(msg)
+                    },
+                };
 
                 // put the response in the queue
                 {
