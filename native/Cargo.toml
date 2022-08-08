@@ -10,10 +10,10 @@ name = "node_noise"
 crate-type = ["dylib"]
 
 [build-dependencies]
-neon-build = "0.1.13"
+neon-build = "0.10"
 
 [dependencies]
-neon = "0.1.13"
+neon = "0.10"
 noise_search = "0.7.0"
 unix_socket = "0.5.0"
 lazy_static = "0.2.4"

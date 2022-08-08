@@ -21,11 +21,13 @@ use std::mem::drop;
 
 use unix_socket::{UnixStream, UnixListener};
 
-use neon::vm::{Call, JsResult};
-use neon::js::{JsString, JsNumber, JsBoolean, JsNull, JsArray, JsObject, JsUndefined, Object,
-               Value, JsValue};
-use neon::js::error::{JsError, Kind};
-use neon::mem::Handle;
+use neon::{
+    context::{Context, FunctionContext},
+    handle::Handle,
+    object::Object,
+    result::JsResult,
+    types::{JsArray, JsBoolean, JsNumber, JsString, JsUndefined, JsValue, Value},
+};
 
 use noise_search::index::{Index, OpenOptions, Batch, MvccRwLock};
 use noise_search::json_value::JsonValue;
@@ -100,7 +102,7 @@ lazy_static! {
     static ref OPEN_INSTANCES: Mutex<HashMap<String, Arc<MvccRwLock<OpenedIndex>>>> = Mutex::new(HashMap::new());
 }
 
-fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
+fn js_start_listener(_cx: FunctionContext) -> JsResult<JsUndefined> {
     let _ = fs::remove_file("echo.sock");
     let listener = UnixListener::bind("echo.sock").unwrap();
 
@@ -124,22 +126,16 @@ fn js_start_listener(_call: Call) -> JsResult<JsUndefined> {
     Ok(JsUndefined::new())
 }
 
-fn js_send_message(call: Call) -> JsResult<JsUndefined> {
-    let scope = call.scope;
-    let conn_id: Handle<JsNumber> = call.arguments
-        .require(scope, 0)?
-        .check::<JsNumber>()?;
-    let msg_type: Handle<JsNumber> = call.arguments
-        .require(scope, 1)?
-        .check::<JsNumber>()?;
-    let args: Handle<JsArray> = call.arguments.require(scope, 2)?.check::<JsArray>()?;
+fn js_send_message(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    let conn_id = cx.argument::<JsNumber>(0)?;
+    let msg_type = cx.argument::<JsNumber>(1)?;
+    let args = cx.argument::<JsArray>(2)?.to_vec(&mut cx)?;
 
-    let vec = args.to_vec(scope)?;
     let message = match msg_type.value() as u64 {
         0 => {
             // open index
-            let name = vec[0].check::<JsString>()?.value();
-            let opt_create = if vec[1].check::<JsBoolean>()?.value() {
+            let name = args[0].downcast_or_throw::<JsString, _>(&mut cx)?.value();
+            let opt_create = if args[1].downcast_or_throw::<JsBoolean, _>(&mut cx)?.value() {
                 Some(OpenOptions::Create)
             } else {
                 None
@@ -148,32 +144,32 @@ fn js_send_message(call: Call) -> JsResult<JsUndefined> {
         }
         1 => {
             // drop index
-            Message::DropIndex(vec[0].check::<JsString>()?.value())
+            Message::DropIndex(args[0].downcast_or_throw::<JsString, _>(&mut cx)?.value())
         }
         2 => {
             // add documents
-            Message::Add(vec.iter()
-                             .map(|val| val.check::<JsString>().unwrap().value())
+            Message::Add(args.iter()
+                             .map(|val| val.downcast_or_throw::<JsString, _>(&mut cx).unwrap().value())
                              .collect())
         }
         3 => {
             // delete documents
-            Message::Delete(vec.iter()
-                                .map(|val| val.check::<JsString>().unwrap().value())
+            Message::Delete(args.iter()
+                                .map(|val| val.downcast_or_throw::<JsString, _>(&mut cx).unwrap().value())
                                 .collect())
         }
         4 => {
             // query
-            let params = if vec.len() == 2 {
-                Some(vec[1].check::<JsString>()?.value())
+            let params = if args.len() == 2 {
+                Some(args[1].downcast_or_throw::<JsString, _>(&mut cx)?.value())
             } else {
                 None
             };
-            Message::Query(vec[0].check::<JsString>()?.value(), params)
+            Message::Query(args[0].downcast_or_throw::<JsString, _>(&mut cx)?.value(), params)
         }
         5 => Message::Close,
         _ => {
-            return JsError::throw(Kind::Error, "unknown message type");
+            return cx.throw_error("unknown message type");
         }
     };
 
@@ -183,41 +179,35 @@ fn js_send_message(call: Call) -> JsResult<JsUndefined> {
         .deref_mut()
         .insert(conn_id.value() as u64, Some(message));
 
-    Ok(JsUndefined::new())
+    Ok(cx.undefined())
 }
 
-fn js_get_response(mut call: Call) -> JsResult<JsValue> {
-    let conn_id = call.arguments
-        .require(call.scope, 0)?
-        .check::<JsNumber>()?
-        .value() as u64;
+fn js_get_response(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
     let res = match MESSAGE_MAP
               .lock()
               .unwrap()
               .deref_mut()
               .get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
-        None => return JsError::throw(Kind::Error, "missing response"),
+        None => return cx.throw_error("missing response"),
     };
     match res.unwrap() {
-        Message::ResponseOk(json) => Ok(convert_json(&mut call, json)),
-        Message::ResponseError(msg) => JsError::throw(Kind::Error, &msg),
+        Message::ResponseOk(json) => Ok(convert_json(&mut cx, json)),
+        Message::ResponseError(msg) => cx.throw_error(&msg),
         _ => panic!("Non-response message"),
     }
 }
 
-fn js_get_error(call: Call) -> JsResult<JsUndefined> {
-    let conn_id = call.arguments
-        .require(call.scope, 0)?
-        .check::<JsNumber>()?
-        .value() as u64;
+fn js_get_error(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
     let res = match MESSAGE_MAP
               .lock()
               .unwrap()
               .deref_mut()
               .get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
-        None => return JsError::throw(Kind::Error, "missing response"),
+        None => return cx.throw_error("missing response"),
     };
     match res.unwrap() {
         Message::ResponseOk(json) => {
@@ -230,32 +220,29 @@ fn js_get_error(call: Call) -> JsResult<JsUndefined> {
                  .unwrap() = Some(Message::ResponseOk(json));
             Ok(JsUndefined::new())
         }
-        Message::ResponseError(msg) => JsError::throw(Kind::Error, &msg),
+        Message::ResponseError(msg) => cx.throw_error(&msg),
         _ => panic!("Non-response message"),
     }
 }
 
-fn js_query_next(mut call: Call) -> JsResult<JsValue> {
-    let conn_id = call.arguments
-        .require(call.scope, 0)?
-        .check::<JsNumber>()?
-        .value() as u64;
+fn js_query_next(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
     let res = match MESSAGE_MAP
               .lock()
               .unwrap()
               .deref_mut()
               .get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
-        None => return JsError::throw(Kind::Error, "missing response"),
+        None => return cx.throw_error("missing response"),
     };
     match res.unwrap() {
         Message::ResponseOk(JsonValue::Array(mut vec)) => {
             if let Some(ret) = vec.pop() {
-                let next = convert_json(&mut call, ret);
-                let obj: Handle<JsObject> = JsObject::new(call.scope);
-                let done = JsBoolean::new(call.scope, false).as_value(call.scope);
-                assert!(obj.set("value", next).is_ok());
-                assert!(obj.set("done", done).is_ok());
+                let next = convert_json(&mut cx, ret);
+                let obj = cx.empty_object();
+                let done = cx.boolean(false).as_value(&mut cx);
+                assert!(obj.set(&mut cx, "value", next).is_ok());
+                assert!(obj.set(&mut cx, "done", done).is_ok());
                 // put the remaining vec back
                 *MESSAGE_MAP
                      .lock()
@@ -264,25 +251,22 @@ fn js_query_next(mut call: Call) -> JsResult<JsValue> {
                      .get_mut(&conn_id)
                      .unwrap() = Some(Message::ResponseOk(JsonValue::Array(vec)));
 
-                Ok(obj.as_value(call.scope))
+                Ok(obj.as_value(&mut cx))
             } else {
-                let obj: Handle<JsObject> = JsObject::new(call.scope);
-                let done = JsBoolean::new(call.scope, true).as_value(call.scope);
-                assert!(obj.set("done", done).is_ok());
-                Ok(obj.as_value(call.scope))
+                let obj = cx.empty_object();
+                let done = cx.boolean(true).as_value(&mut cx);
+                assert!(obj.set(&mut cx, "done", done).is_ok());
+                Ok(obj.as_value(&mut cx))
             }
         }
         Message::ResponseOk(_json) => panic!("Non-array message"),
-        Message::ResponseError(msg) => JsError::throw(Kind::Error, &msg),
+        Message::ResponseError(msg) => cx.throw_error(&msg),
         _ => panic!("Non-response message"),
     }
 }
 
-fn js_query_unref(call: Call) -> JsResult<JsUndefined> {
-    let conn_id = call.arguments
-        .require(call.scope, 0)?
-        .check::<JsNumber>()?
-        .value() as u64;
+fn js_query_unref(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
     match MESSAGE_MAP
               .lock()
               .unwrap()
@@ -297,30 +281,28 @@ fn js_query_unref(call: Call) -> JsResult<JsUndefined> {
     Ok(JsUndefined::new())
 }
 
-fn convert_json<'a>(call: &mut Call<'a>, json_in: JsonValue) -> Handle<'a, JsValue> {
+fn convert_json<'a>(cx: &mut FunctionContext<'a>, json_in: JsonValue) -> Handle<'a, JsValue> {
     match json_in {
-        JsonValue::Number(n) => JsNumber::new(call.scope, n).as_value(call.scope),
-        JsonValue::String(s) => {
-            JsString::new(call.scope, &s)
-                .unwrap()
-                .as_value(call.scope)
-        }
-        JsonValue::True => JsBoolean::new(call.scope, true).as_value(call.scope),
-        JsonValue::False => JsBoolean::new(call.scope, false).as_value(call.scope),
-        JsonValue::Null => JsNull::new().as_value(call.scope),
+        JsonValue::Number(n) => cx.number(n).as_value(cx),
+        JsonValue::String(s) => cx.string(&s).as_value(cx),
+        JsonValue::True => cx.boolean(true).as_value(cx),
+        JsonValue::False => cx.boolean(false).as_value(cx),
+        JsonValue::Null => cx.null().as_value(cx),
         JsonValue::Object(vec) => {
-            let obj: Handle<JsObject> = JsObject::new(call.scope);
+            let obj = cx.empty_object();
             for (key, value) in vec {
-                assert!(obj.set(&key as &str, convert_json(call, value)).is_ok());
+                let json = convert_json(cx, value);
+                assert!(obj.set(cx, &key as &str, json).is_ok());
             }
-            obj.as_value(call.scope)
+            obj.as_value(cx)
         }
         JsonValue::Array(vec) => {
-            let array = JsArray::new(call.scope, vec.len() as u32);
+            let array = cx.empty_array();
             for (n, value) in vec.into_iter().enumerate() {
-                assert!(array.set(n as u32, convert_json(call, value)).is_ok());
+                let json = convert_json(cx, value);
+                assert!(array.set(cx, n as u32, json).is_ok());
             }
-            array.as_value(call.scope)
+            array.as_value(cx)
         }
     }
 }
@@ -592,11 +574,12 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
     }
 }
 
-register_module!(m, {
-    m.export("startListener", js_start_listener)?;
-    m.export("getResponse", js_get_response)?;
-    m.export("sendMessage", js_send_message)?;
-    m.export("queryNext", js_query_next)?;
-    m.export("getError", js_get_error)?;
-    m.export("queryUnref", js_query_unref)
+register_module!(mut cx, {
+    cx.export_function("startListener", js_start_listener)?;
+    cx.export_function("getResponse", js_get_response)?;
+    cx.export_function("sendMessage", js_send_message)?;
+    cx.export_function("queryNext", js_query_next)?;
+    cx.export_function("getError", js_get_error)?;
+    cx.export_function("queryUnref", js_query_unref)?;
+    Ok(())
 });
