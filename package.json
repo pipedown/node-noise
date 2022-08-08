@@ -11,14 +11,11 @@
     "url": "https://github.com/pipedown/node-noise"
   },
   "dependencies": {
-    "async": "^2.2.0",
-    "neon-cli": "0.1.13",
-    "node-ipc": "^8.10.3",
-    "unix-stream": "^1.0.2"
+    "async": "^3.2.4",
+    "neon-cli": "^0.10.1"
   },
   "devDependencies": {
-    "co": "^4.6.0",
-    "test": "0.6.0"
+    "test": "^3.2.1"
   },
   "scripts": {
     "install": "neon build",
