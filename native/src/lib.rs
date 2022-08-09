@@ -10,7 +10,6 @@ use std::str;
 use std::panic;
 use std::thread;
 use std::io::{BufReader, BufRead, Write};
-use std::error::Error;
 use std::collections::HashMap;
 use std::vec::Vec;
 use std::ops::DerefMut;
@@ -362,7 +361,7 @@ fn handle_client_outer(stream: UnixStream) {
                                     index = Some(new_index);
                                     Message::ResponseOk(JsonValue::True)
                                 }
-                                Err(msg) => Message::ResponseError(msg.description().to_string()),
+                                Err(msg) => Message::ResponseError(msg.to_string()),
                             }
                         } else {
                             Message::ResponseOk(JsonValue::True)
@@ -413,7 +412,7 @@ fn handle_client_outer(stream: UnixStream) {
                     } else {
                         match Index::drop(&name) {
                             Ok(()) => Message::ResponseOk(JsonValue::True),
-                            Err(msg) => Message::ResponseError(msg.description().to_string()),
+                            Err(msg) => Message::ResponseError(msg.to_string()),
                         }
                     };
                     {
@@ -513,7 +512,7 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
                 match index.add(&doc_str, &mut batch) {
                     Ok(id) => results.push(JsonValue::String(id)),
                     Err(reason) => {
-                        let err_str = JsonValue::String(reason.description().to_string());
+                        let err_str = JsonValue::String(reason.to_string());
                         let err_obj = vec![("error".to_string(), err_str)];
                         results.push(JsonValue::Object(err_obj))
                     }
@@ -521,7 +520,7 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
             }
             match index.flush(batch) {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
-                Err(reason) => Message::ResponseError(reason.description().to_string()),
+                Err(reason) => Message::ResponseError(reason.to_string()),
             }
         }
         Message::Delete(vec) => {
@@ -533,7 +532,7 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
                     Ok(true) => results.push(JsonValue::True),
                     Ok(false) => results.push(JsonValue::False),
                     Err(reason) => {
-                        let err_str = JsonValue::String(reason.description().to_string());
+                        let err_str = JsonValue::String(reason.to_string());
                         let err_obj = vec![("error".to_string(), err_str)];
                         results.push(JsonValue::Object(err_obj))
                     }
@@ -541,7 +540,7 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
             }
             match index.flush(batch) {
                 Ok(()) => Message::ResponseOk(JsonValue::Array(results)),
-                Err(reason) => Message::ResponseError(reason.description().to_string()),
+                Err(reason) => Message::ResponseError(reason.to_string()),
             }
         }
         Message::Query(query, params) => {
@@ -552,7 +551,7 @@ fn process_message(index: &mut OpenedIndexCleanupGuard, message: Message) -> Mes
                     vec.reverse(); // reverse so the client iterator can pop vals off end.
                     Message::ResponseOk(JsonValue::Array(vec))
                 }
-                Err(reason) => Message::ResponseError(reason.description().to_string()),
+                Err(reason) => Message::ResponseError(reason.to_string()),
             };
             msg
         }
