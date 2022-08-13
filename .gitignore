@@ -1,3 +1,4 @@
+native/artifacts.json
 native/target
 native/index.node
 native/Cargo.lock
