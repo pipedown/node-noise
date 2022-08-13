@@ -5,20 +5,19 @@ extern crate unix_socket;
 #[macro_use]
 extern crate lazy_static;
 
-
-use std::str;
-use std::panic;
-use std::thread;
-use std::io::{BufReader, BufRead, Write};
 use std::collections::HashMap;
-use std::vec::Vec;
-use std::ops::DerefMut;
 use std::fs;
-use std::sync::{Arc, Mutex};
-use std::ops::Deref;
+use std::io::{BufRead, BufReader, Write};
 use std::mem::drop;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::panic;
+use std::str;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::vec::Vec;
 
-use unix_socket::{UnixStream, UnixListener};
+use unix_socket::{UnixListener, UnixStream};
 
 use neon::{
     context::{Context, FunctionContext},
@@ -28,7 +27,7 @@ use neon::{
     types::{JsArray, JsBoolean, JsNumber, JsString, JsUndefined, JsValue, Value},
 };
 
-use noise_search::index::{Index, OpenOptions, Batch, MvccRwLock};
+use noise_search::index::{Batch, Index, MvccRwLock, OpenOptions};
 use noise_search::json_value::JsonValue;
 
 enum Message {
@@ -45,8 +44,7 @@ enum Message {
 // this is a global that provides a messaging slot from node clients to send messages
 // to the server threads.
 lazy_static! {
-    static ref MESSAGE_MAP: Mutex<HashMap<u64, Option<Message>>> =
-        Mutex::new(HashMap::new());
+    static ref MESSAGE_MAP: Mutex<HashMap<u64, Option<Message>>> = Mutex::new(HashMap::new());
 }
 
 struct OpenedIndex {
@@ -98,7 +96,8 @@ impl DerefMut for OpenedIndexCleanupGuard {
 
 // This lock only allows one index to be updated at a time.
 lazy_static! {
-    static ref OPEN_INSTANCES: Mutex<HashMap<String, Arc<MvccRwLock<OpenedIndex>>>> = Mutex::new(HashMap::new());
+    static ref OPEN_INSTANCES: Mutex<HashMap<String, Arc<MvccRwLock<OpenedIndex>>>> =
+        Mutex::new(HashMap::new());
 }
 
 fn js_start_listener(_cx: FunctionContext) -> JsResult<JsUndefined> {
@@ -147,15 +146,27 @@ fn js_send_message(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         }
         2 => {
             // add documents
-            Message::Add(args.iter()
-                             .map(|val| val.downcast_or_throw::<JsString, _>(&mut cx).unwrap().value())
-                             .collect())
+            Message::Add(
+                args.iter()
+                    .map(|val| {
+                        val.downcast_or_throw::<JsString, _>(&mut cx)
+                            .unwrap()
+                            .value()
+                    })
+                    .collect(),
+            )
         }
         3 => {
             // delete documents
-            Message::Delete(args.iter()
-                                .map(|val| val.downcast_or_throw::<JsString, _>(&mut cx).unwrap().value())
-                                .collect())
+            Message::Delete(
+                args.iter()
+                    .map(|val| {
+                        val.downcast_or_throw::<JsString, _>(&mut cx)
+                            .unwrap()
+                            .value()
+                    })
+                    .collect(),
+            )
         }
         4 => {
             // query
@@ -164,7 +175,10 @@ fn js_send_message(mut cx: FunctionContext) -> JsResult<JsUndefined> {
             } else {
                 None
             };
-            Message::Query(args[0].downcast_or_throw::<JsString, _>(&mut cx)?.value(), params)
+            Message::Query(
+                args[0].downcast_or_throw::<JsString, _>(&mut cx)?.value(),
+                params,
+            )
         }
         5 => Message::Close,
         _ => {
@@ -183,11 +197,7 @@ fn js_send_message(mut cx: FunctionContext) -> JsResult<JsUndefined> {
 
 fn js_get_response(mut cx: FunctionContext) -> JsResult<JsValue> {
     let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
-    let res = match MESSAGE_MAP
-              .lock()
-              .unwrap()
-              .deref_mut()
-              .get_mut(&conn_id) {
+    let res = match MESSAGE_MAP.lock().unwrap().deref_mut().get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
         None => return cx.throw_error("missing response"),
     };
@@ -200,11 +210,7 @@ fn js_get_response(mut cx: FunctionContext) -> JsResult<JsValue> {
 
 fn js_get_error(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
-    let res = match MESSAGE_MAP
-              .lock()
-              .unwrap()
-              .deref_mut()
-              .get_mut(&conn_id) {
+    let res = match MESSAGE_MAP.lock().unwrap().deref_mut().get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
         None => return cx.throw_error("missing response"),
     };
@@ -212,11 +218,11 @@ fn js_get_error(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         Message::ResponseOk(json) => {
             //put back
             *MESSAGE_MAP
-                 .lock()
-                 .unwrap()
-                 .deref_mut()
-                 .get_mut(&conn_id)
-                 .unwrap() = Some(Message::ResponseOk(json));
+                .lock()
+                .unwrap()
+                .deref_mut()
+                .get_mut(&conn_id)
+                .unwrap() = Some(Message::ResponseOk(json));
             Ok(JsUndefined::new())
         }
         Message::ResponseError(msg) => cx.throw_error(&msg),
@@ -226,11 +232,7 @@ fn js_get_error(mut cx: FunctionContext) -> JsResult<JsUndefined> {
 
 fn js_query_next(mut cx: FunctionContext) -> JsResult<JsValue> {
     let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
-    let res = match MESSAGE_MAP
-              .lock()
-              .unwrap()
-              .deref_mut()
-              .get_mut(&conn_id) {
+    let res = match MESSAGE_MAP.lock().unwrap().deref_mut().get_mut(&conn_id) {
         Some(ref mut res) => res.take(),
         None => return cx.throw_error("missing response"),
     };
@@ -244,11 +246,11 @@ fn js_query_next(mut cx: FunctionContext) -> JsResult<JsValue> {
                 assert!(obj.set(&mut cx, "done", done).is_ok());
                 // put the remaining vec back
                 *MESSAGE_MAP
-                     .lock()
-                     .unwrap()
-                     .deref_mut()
-                     .get_mut(&conn_id)
-                     .unwrap() = Some(Message::ResponseOk(JsonValue::Array(vec)));
+                    .lock()
+                    .unwrap()
+                    .deref_mut()
+                    .get_mut(&conn_id)
+                    .unwrap() = Some(Message::ResponseOk(JsonValue::Array(vec)));
 
                 Ok(obj.as_value(&mut cx))
             } else {
@@ -266,11 +268,7 @@ fn js_query_next(mut cx: FunctionContext) -> JsResult<JsValue> {
 
 fn js_query_unref(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     let conn_id = cx.argument::<JsNumber>(0)?.value() as u64;
-    match MESSAGE_MAP
-              .lock()
-              .unwrap()
-              .deref_mut()
-              .get_mut(&conn_id) {
+    match MESSAGE_MAP.lock().unwrap().deref_mut().get_mut(&conn_id) {
         Some(ref mut res) => {
             let _ = res.take();
             ()
@@ -354,9 +352,9 @@ fn handle_client_outer(stream: UnixStream) {
                             match Index::open(&name, options) {
                                 Ok(new_index) => {
                                     let new_index = Arc::new(MvccRwLock::new(OpenedIndex {
-                                                                                 index: new_index,
-                                                                                 open_count: 1,
-                                                                             }));
+                                        index: new_index,
+                                        open_count: 1,
+                                    }));
                                     map.insert(name.clone(), new_index.clone());
                                     index = Some(new_index);
                                     Message::ResponseOk(JsonValue::True)
@@ -370,11 +368,11 @@ fn handle_client_outer(stream: UnixStream) {
                     // put the response in the queue
                     {
                         *MESSAGE_MAP
-                             .lock()
-                             .unwrap()
-                             .deref_mut()
-                             .get_mut(&connection_id)
-                             .unwrap() = Some(resp);
+                            .lock()
+                            .unwrap()
+                            .deref_mut()
+                            .get_mut(&connection_id)
+                            .unwrap() = Some(resp);
                     }
 
                     {
@@ -384,13 +382,13 @@ fn handle_client_outer(stream: UnixStream) {
                         writer.flush().unwrap();
                     }
                     if index.is_some() {
-                        let index_guard = OpenedIndexCleanupGuard { index: index.unwrap() };
+                        let index_guard = OpenedIndexCleanupGuard {
+                            index: index.unwrap(),
+                        };
                         // now start servicing instance requests
                         let result = panic::catch_unwind(|| {
-                                                             handle_client(index_guard,
-                                                                           reader,
-                                                                           connection_id);
-                                                         });
+                            handle_client(index_guard, reader, connection_id);
+                        });
                         if result.is_err() {
                             println!("panic happend!")
                         }
@@ -418,11 +416,11 @@ fn handle_client_outer(stream: UnixStream) {
                     {
                         // put the response in the queue
                         *MESSAGE_MAP
-                             .lock()
-                             .unwrap()
-                             .deref_mut()
-                             .get_mut(&connection_id)
-                             .unwrap() = Some(resp);
+                            .lock()
+                            .unwrap()
+                            .deref_mut()
+                            .get_mut(&connection_id)
+                            .unwrap() = Some(resp);
                     }
                     {
                         // notify the client the response is ready
@@ -441,7 +439,6 @@ fn handle_client_outer(stream: UnixStream) {
                             .deref_mut()
                             .remove(&connection_id);
                     }
-
                 }
                 _ => panic!("unexpected message"),
             }
@@ -451,9 +448,11 @@ fn handle_client_outer(stream: UnixStream) {
     }
 }
 
-fn handle_client(mut index: OpenedIndexCleanupGuard,
-                 mut reader: BufReader<UnixStream>,
-                 connection_id: u64) {
+fn handle_client(
+    mut index: OpenedIndexCleanupGuard,
+    mut reader: BufReader<UnixStream>,
+    connection_id: u64,
+) {
     let mut buf = Vec::new();
     loop {
         // from now on the stream only sends a single byte on value 0
@@ -483,18 +482,17 @@ fn handle_client(mut index: OpenedIndexCleanupGuard,
                 // put the response in the queue
                 {
                     *MESSAGE_MAP
-                         .lock()
-                         .unwrap()
-                         .deref_mut()
-                         .get_mut(&connection_id)
-                         .unwrap() = Some(response);
+                        .lock()
+                        .unwrap()
+                        .deref_mut()
+                        .get_mut(&connection_id)
+                        .unwrap() = Some(response);
                 }
 
                 // notify the client the response is ready
                 let writer = reader.get_mut();
                 writer.write_all(&[b'1']).unwrap();
                 writer.flush().unwrap();
-
             }
             Ok(_size) => panic!("WTF, more than one byte read!"),
             Err(msg) => println!("Error reading socket: {}", msg),
